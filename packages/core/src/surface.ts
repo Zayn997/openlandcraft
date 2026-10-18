@@ -1,15 +1,33 @@
-import { carveRiver, type Heightfield } from '@openlandcraft/landscape';
-import { groundHeight, type Project, type River } from './model';
+import { carveLake, carveRiver, type Heightfield } from '@openlandcraft/landscape';
+import { groundHeight, type Lake, type Project, type River } from './model';
+import { WATER_APPEARANCE_DEFAULTS } from './materials';
+import { RIVER_WATER_DEFAULTS } from './river-water';
 
-const evaluated = new WeakMap<Heightfield, { river: River; field: Heightfield }>();
-export function evaluateProject(project: Project): Project {
+const evaluated = new WeakMap<Heightfield, { river: River; width: number; depth: number; field: Heightfield }>();
+function sameChannel(a: River, b: River) {
+  return a.width === b.width && a.depth === b.depth && a.bank === b.bank
+    && (a.points === b.points || JSON.stringify(a.points) === JSON.stringify(b.points));
+}
+function evaluateRiver(project: Project): Project {
   const river = project.entities.find((entity): entity is River => entity.kind === 'river' && entity.visible);
   if (!river) return project;
   let cached = evaluated.get(project.site.terrain);
-  if (!cached || cached.river !== river) {
-    cached = { river, field: carveRiver(project.site.terrain, project.site, river) }; evaluated.set(project.site.terrain, cached);
+  if (!cached || !sameChannel(cached.river, river) || cached.width !== project.site.width || cached.depth !== project.site.depth) {
+    cached = { river, width: project.site.width, depth: project.site.depth, field: carveRiver(project.site.terrain, project.site, river) }; evaluated.set(project.site.terrain, cached);
   }
   return { ...project, site: { ...project.site, terrain: cached.field } };
+}
+const lakeFields=new WeakMap<Heightfield,{key:string;field:Heightfield}>();
+/** Deterministic order: authored ground → river → lake → following objects/paths. */
+export function evaluateProject(project:Project):Project {
+  const hidden=new Set(project.entities.filter(e=>e.kind==='plantingRegion'&&!e.visible).map(e=>e.id));
+  if(hidden.size)project={...project,entities:project.entities.map(e=>e.kind==='instance'&&e.regionId&&hidden.has(e.regionId)?{...e,visible:false}:e)};
+  const result=evaluateRiver(project),lake=result.entities.find((e):e is Lake=>e.kind==='lake'&&e.visible);
+  if(!lake)return result;
+  const key=JSON.stringify([result.site.width,result.site.depth,lake.points,lake.level,lake.depth,lake.bank]);
+  let cached=lakeFields.get(result.site.terrain);
+  if(!cached||cached.key!==key){cached={key,field:carveLake(result.site.terrain,result.site,lake)};lakeFields.set(result.site.terrain,cached);}
+  return {...result,site:{...result.site,terrain:cached.field}};
 }
 export function createRiver(project: Project): River {
   let previous = 30;
@@ -20,5 +38,5 @@ export function createRiver(project: Project): River {
   const points = plan.map(([x, z]): [number, number, number] => {
     previous = Math.max(0, Math.min(previous, groundHeight(x, z, project.site) - 0.3)); return [x, previous, z];
   });
-  return { id: crypto.randomUUID(), kind: 'river', parentId: 'site', name: 'Coastal river', visible: true, points, width: Math.max(Math.min(4, Math.min(width, depth) * 0.1), Math.ceil(20 * Math.max(width / (terrain.columns - 1), depth / (terrain.rows - 1))) / 10), depth: 1.5, bank: Math.min(2, Math.min(width, depth) * 0.05), speed: 0.8, color: '#448e87' };
+  return { id: crypto.randomUUID(), kind: 'river', parentId: 'site', name: 'Coastal river', visible: true, points, width: Math.max(Math.min(4, Math.min(width, depth) * 0.1), Math.ceil(20 * Math.max(width / (terrain.columns - 1), depth / (terrain.rows - 1))) / 10), depth: 1.5, bank: Math.min(2, Math.min(width, depth) * 0.05), speed: 0.8, color: '#448e87', appearance:{...WATER_APPEARANCE_DEFAULTS}, water:{...RIVER_WATER_DEFAULTS} };
 }

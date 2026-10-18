@@ -1,5 +1,7 @@
 import { z } from 'zod';
 export * from './river';
+export * from './path';
+export * from './lake';
 
 export const MIN_HEIGHT = -9;
 export const MAX_HEIGHT = 35;
@@ -105,3 +107,5 @@ export class TerrainStroke {
   }
   snapshot(): Heightfield { return { ...this.initial, heights: [...this.heights] }; }
 }
+
+export * from './region';

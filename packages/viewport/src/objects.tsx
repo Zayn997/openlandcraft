@@ -1,3 +1,6 @@
+import {ArchitectureLabel} from './architecture-label';
+import {buildPartGeometry} from './architecture-geometry';
+import {footprint, wallLength, type Wall} from '@openlandcraft/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useThree } from '@react-three/fiber';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
@@ -43,32 +46,28 @@ export function ModelInstances({ asset, instances, project, selectedId, onSelect
     loadModel(asset).then((root) => { if (!alive) { disposeModel(root); return; } owned = root; setSource(root); }).catch((error: unknown) => { if (alive) onError(`${asset.name}: ${error instanceof Error ? error.message : 'Model could not load.'}`); });
     return () => { alive = false; if (owned) disposeModel(owned); };
   }, [asset.data]);
-  return source ? <ModelContent source={source} instances={instances} project={project} selectedId={selectedId} interactive={interactive} onSelect={onSelect} /> : null;
+  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent source={source} instances={instances} project={project} selectedId={selectedId} interactive={interactive} onSelect={onSelect} /></group> : null;
 }
 
-function RoofGeometry({ width, depth, rise }: { width: number; depth: number; rise: number }) {
-  const geometry = useMemo(() => {
-    const shape = new THREE.Shape(); shape.moveTo(-width / 2, 0); shape.lineTo(width / 2, 0); shape.lineTo(0, rise); shape.closePath();
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }); geometry.translate(0, 0, -depth / 2); return geometry;
-  }, [width, depth, rise]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return <primitive attach="geometry" object={geometry} />;
+function Part({ entity, walls, selected, dimensions, onSelect, onWallPick, activeWall=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; activeWall?: boolean; blocking?:boolean;interactive:boolean;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {
+  const geometry=useMemo(()=>buildPartGeometry(entity,walls),[entity,walls]);
+  useEffect(()=>()=>geometry.dispose(),[geometry]);
+  const points=entity.kind==='wall'?[entity.start,entity.end]:footprint(entity);
+  const edges=entity.kind==='wall'?1:points.length;
+  const top=entity.elevation+(entity.kind==='wall'?entity.height:entity.kind==='roof'?entity.rise:entity.thickness);
+  return <>
+    <mesh raycast={!activeWall&&(interactive||blocking)?THREE.Mesh.prototype.raycast:noRaycast} geometry={geometry} castShadow receiveShadow onPointerDown={event=>{if(blocking)event.stopPropagation();}} onPointerMove={event=>{if(blocking)event.stopPropagation();}} onClick={event=>{if(blocking)event.stopPropagation();if(interactive&&event.delta<=4){event.stopPropagation();if(entity.kind==='wall'&&onWallPick&&!event.shiftKey)onWallPick(entity.id,false);else onSelect(entity.id,event.shiftKey);}}} onDoubleClick={event=>{if(interactive&&entity.kind==='wall'&&onWallPick&&!event.shiftKey&&event.delta<=4){event.stopPropagation();onWallPick(entity.id,true);}}}>
+      <meshStandardMaterial color={entity.color} roughness={0.8}/><Edges raycast={noRaycast} color={selected?'#d7f29c':'#798174'} lineWidth={selected?2:0.7}/>
+    </mesh>
+    {dimensions&&Array.from({length:edges},(_,i)=>{const a=points[i],b=points[(i+1)%points.length];return <ArchitectureLabel key={i} position={[(a[0]+b[0])/2,top+0.18,(a[1]+b[1])/2]} text={`${Math.hypot(b[0]-a[0],b[1]-a[1]).toFixed(2)} m`}/>;})}
+    {dimensions&&entity.kind==='wall'&&(entity.openings??[]).map(o=>{const t=(o.offset+o.width/2)/wallLength(entity);return <ArchitectureLabel key={o.id} position={[entity.start[0]+(entity.end[0]-entity.start[0])*t,entity.elevation+o.sill+o.height/2,entity.start[1]+(entity.end[1]-entity.start[1])*t]} text={`${o.kind} · ${o.width.toFixed(2)} × ${o.height.toFixed(2)} m`}/>;})}
+  </>;
 }
-function Part({ entity, selected, onSelect }: { entity: BuildingPart; selected: boolean; onSelect: (id: string) => void }) {
-  const isWall = entity.kind === 'wall';
-  const length = isWall ? Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1]) : 0;
-  const center = isWall ? [(entity.start[0] + entity.end[0]) / 2, (entity.start[1] + entity.end[1]) / 2] : entity.center;
-  const y = entity.elevation + (isWall ? entity.height / 2 : entity.kind === 'slab' ? entity.thickness / 2 : 0);
-  return <mesh position={[center[0], y, center[1]]} rotation={[0, isWall ? -Math.atan2(entity.end[1] - entity.start[1], entity.end[0] - entity.start[0]) : 0, 0]} castShadow receiveShadow
-    onClick={(event) => { if (event.delta <= 4) { event.stopPropagation(); onSelect(entity.id); } }}>
-    {entity.kind === 'roof' ? <RoofGeometry {...entity} /> : <boxGeometry args={isWall ? [length, entity.height, entity.thickness] : [entity.width, entity.thickness, entity.depth]} />}
-    <meshStandardMaterial color={entity.color} roughness={0.8} />
-    <Edges color={selected ? '#d7f29c' : '#798174'} lineWidth={selected ? 2 : 0.7} />
-  </mesh>;
-}
-export function BuildingLevel({ level, parts, selectedId, onSelect }: { level: Level; parts: BuildingPart[]; selectedId: string | null; onSelect: (id: string) => void }) {
-  return <group position={level.position} rotation={[0, level.rotation * Math.PI / 180, 0]}>
-    {parts.map((entity) => <Part key={entity.id} entity={entity} selected={selectedId === entity.id || selectedId === level.id} onSelect={onSelect} />)}
+export function BuildingLevel({ level, parts, selectedId, selectedIds=[], onSelect, onWallPick, editingWallId, interactive, placingOpening=false, editingOpening=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; editingWallId?: string; editingOpening?:boolean;placingOpening?:boolean;interactive:boolean; level: Level; parts: BuildingPart[]; selectedId: string | null; selectedIds?:string[]; onSelect: (id: string,additive?:boolean) => void }) {
+  const wallKey=JSON.stringify(parts.filter(p=>p.kind==='wall'));
+  const walls=useMemo(()=>parts.filter((p):p is Wall=>p.kind==='wall'),[wallKey]);
+  return <group position={level.position} rotation={[0,level.rotation*Math.PI/180,0]}>
+    {parts.map(entity=><Part key={entity.id} entity={entity} walls={walls} interactive={interactive} activeWall={editingWallId===entity.id} onWallPick={onWallPick} blocking={editingOpening||placingOpening&&entity.kind!=='wall'} selected={selectedIds.length?selectedIds.includes(entity.id):selectedId===entity.id||selectedId===level.id} dimensions={interactive&&selectedId===entity.id&&!selectedIds.length&&editingWallId!==entity.id} onSelect={onSelect}/>)}
   </group>;
 }
 

@@ -1,3 +1,5 @@
+import { WATER_APPEARANCE_DEFAULTS } from './materials';
+import { COAST_DEFAULTS } from './model';
 import 'fake-indexeddb/auto';
 import legacy from '../../../examples/coastal-study.olc.json';
 import { describe, expect, it } from 'vitest';
@@ -8,8 +10,8 @@ import { saveLocal, loadLocal, serializeProject, deserializeProject } from '@ope
 describe('terrain transactions and project migration', () => {
   it('migrates a version 1 project without changing objects or water settings', () => {
     const migrated = parseProject(legacy);
-    expect(migrated.version).toBe(4);
-    expect(migrated.entities).toEqual(legacy.entities);
+    expect(migrated.version).toBe(13);
+    expect(migrated.entities).toEqual(legacy.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity));
     expect(migrated.site.terrain.heights).toHaveLength(129 * 105);
     expect(Number.isFinite(groundHeight(0, 0, migrated.site))).toBe(true);
     expect(() => parseProject({ ...migrated, site: { ...migrated.site, terrain: { ...migrated.site.terrain, heights: [] } } })).toThrow();

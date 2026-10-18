@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Check, Plus, RotateCcw, Trash2, Waves } from 'lucide-react';
 import { type Editor, type River } from '@openlandcraft/core';
 import { NumberField } from './NumberField';
+import { WaterMaterialFields } from './MaterialFields';
 
-export function RiverInspector({ river, editor, cancel }: { river: River; editor: Editor; cancel: () => void }) {
+export function RiverInspector({ river, editor, cancel, playing, onReset, onStep }: { river: River; editor: Editor; cancel: () => void; playing:boolean; onReset:()=>void; onStep:()=>void }) {
   const [draft, setDraft] = useState(river), [error, setError] = useState('');
   useEffect(() => { setDraft(river); }, [river]);
   const state = editor.getSnapshot();
@@ -16,7 +17,7 @@ export function RiverInspector({ river, editor, cancel }: { river: River; editor
       editor.preview({ type: 'replace', entity: next }); setError('');
     } catch (error) { setError(error instanceof Error ? error.message : 'The river is invalid.'); }
   };
-  return <form className="inspector-content river-inspector" onSubmit={(event) => { event.preventDefault(); if (!error) editor.commit(); }}>
+  return <form className="inspector-content river-inspector" onInputCapture={()=>{if(!editor.getSnapshot().gestureLabel)editor.begin('Edit river');}} onSubmit={(event) => { event.preventDefault(); if (!error) editor.commit(); }}>
     <div className="object-heading"><div className="object-icon"><Waves size={24} /></div><div><h2>{river.name}</h2><span>Editable river · upstream → downstream</span></div></div>
     <section className="property-section"><h3>River</h3><label className="name-field">Name<input aria-label="River name" required maxLength={80} value={draft.name} onChange={(event) => change({ ...draft, name: event.target.value })} /></label><div className="river-settings">
       <NumberField label="River width" value={draft.width} min={minimumWidth} max={12} onChange={(width) => change({ ...draft, width })} />
@@ -24,6 +25,18 @@ export function RiverInspector({ river, editor, cancel }: { river: River; editor
       <NumberField label="Bank blend" value={draft.bank} min={1} max={8} onChange={(bank) => change({ ...draft, bank })} />
       <NumberField label="Flow speed" value={draft.speed} min={0} max={3} unit="×" onChange={(speed) => change({ ...draft, speed })} />
     </div><label className="color-field"><input aria-label="River color" type="color" value={draft.color} onChange={(event) => change({ ...draft, color: event.target.value })} /><span>Water color</span><code>{draft.color.toUpperCase()}</code></label></section>
+    <section className="property-section"><h3>Water motion</h3><div className="river-settings">
+      <NumberField label="River wave amplitude" value={draft.water.amplitude} min={0} max={0.4} onChange={amplitude=>change({...draft,water:{...draft.water,amplitude}})} />
+      <NumberField label="River wavelength" value={draft.water.wavelength} min={1.5} max={12} onChange={wavelength=>change({...draft,water:{...draft.water,wavelength}})} />
+      <NumberField label="River foam" value={draft.water.foam} min={0} max={1} unit="" onChange={foam=>change({...draft,water:{...draft.water,foam}})} />
+      <NumberField label="River foam lifetime" value={draft.water.foamPersistence} min={1} max={20} unit="s" onChange={foamPersistence=>change({...draft,water:{...draft.water,foamPersistence}})} />
+      <NumberField label="Bank wetness" value={draft.water.wetBank} min={0} max={1} unit="" onChange={wetBank=>change({...draft,water:{...draft.water,wetBank}})} />
+      <NumberField label="Bank drying time" value={draft.water.dryingTime} min={5} max={90} unit="s" onChange={dryingTime=>change({...draft,water:{...draft.water,dryingTime}})} />
+    </div><p className="field-hint">Waves follow the channel and respond to depth. Foam flows downstream and fades; banks stay wet after water retreats. Flow speed controls the water preview.</p>
+      <div className="coast-preview"><button type="button" disabled={!!state.gestureLabel} onClick={onReset}>Reset river preview</button><button type="button" disabled={!!state.gestureLabel||playing||river.speed===0} onClick={onStep}>Step river 0.5 s</button></div>
+      <p className="field-hint">Pause water to step the river. Editing its shape or waves restarts this preview; material and foam settings retain it.</p>
+    </section>
+    <WaterMaterialFields appearance={draft.appearance} color={draft.color} onChange={values=>change({...draft,...values})} />
     <section className="property-section"><h3>Control points<span>{draft.points.length} / 16</span></h3><p className="field-hint">Drag the numbered handles in the viewport to move X/Z. Edit water elevation here. Point order defines flow direction; elevations must descend or stay level.</p>
       {draft.points.map((point, index) => <div key={index} className="river-point-editor"><div><strong>Point {index + 1}</strong><button type="button" aria-label={`Insert after point ${index + 1}`} title="Insert midpoint" disabled={index === draft.points.length - 1 || draft.points.length >= 16} onClick={() => { const points = [...draft.points], next = points[index + 1]; points.splice(index + 1, 0, [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2, (point[2] + next[2]) / 2]); change({ ...draft, points }); }}><Plus size={13} /></button><button type="button" aria-label={`Remove river point ${index + 1}`} disabled={draft.points.length <= 2} onClick={() => change({ ...draft, points: draft.points.filter((_, i) => i !== index) })}><Trash2 size={13} /></button></div><div className="construction-fields">{point.map((value, axis) => <NumberField key={axis} label={`Point ${index + 1} ${['X', 'elevation', 'Z'][axis]}`} value={value} min={axis === 1 ? -8 : -100} max={axis === 1 ? 30 : 100} onChange={(value) => { const points = draft.points.map((point) => [...point] as [number, number, number]); points[index][axis] = value; change({ ...draft, points }); }} />)}</div></div>)}
     </section>

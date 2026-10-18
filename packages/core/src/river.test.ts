@@ -1,3 +1,5 @@
+import { TERRAIN_MATERIAL_DEFAULTS, WATER_APPEARANCE_DEFAULTS } from './materials';
+import { COAST_DEFAULTS } from './model';
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import v3 from '../../../examples/coastal-architecture.olc.json';
@@ -8,11 +10,11 @@ import { Editor, createProject, createRiver, evaluateProject, groundHeight, inst
 
 describe('river transactions and storage', () => {
   it('migrates M2 models, heights, visibility and bytes without changes', () => {
-    const current = parseProject(v3); expect(current.version).toBe(4); expect(current.assets).toEqual(v3.assets); expect(current.entities).toEqual(v3.entities); expect(current.site).toEqual(v3.site);
+    const current = parseProject(v3); expect(current.version).toBe(13); expect(current.assets).toEqual(v3.assets); expect(current.entities).toEqual(v3.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity)); expect(current.site).toEqual({ ...v3.site, materials: TERRAIN_MATERIAL_DEFAULTS });
   });
   it('reopens the complete river/building/GLB example with identical source bytes and evaluated ground', async () => {
     const before = parseProject(fullExample), reopened = deserializeProject(serializeProject(before));
-    expect(reopened).toEqual(before); expect(reopened.assets).toEqual(v3.assets); expect(reopened.site).toEqual(v3.site);
+    expect(reopened).toEqual(before); expect(reopened.assets).toEqual(v3.assets); expect(reopened.site).toEqual({ ...v3.site, materials: TERRAIN_MATERIAL_DEFAULTS });
     expect(evaluateProject(reopened).site.terrain).toEqual(evaluateProject(before).site.terrain);
     await saveLocal(reopened); expect(await loadLocal()).toEqual(before);
   });

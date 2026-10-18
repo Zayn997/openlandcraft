@@ -1,0 +1,13 @@
+.opening-tools { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.opening-tool-heading > span { color: var(--text-muted, #858e7e); font-size: 10px; letter-spacing: .12em; }
+.opening-tool-heading h2 { margin: 7px 0 0; font-size: 19px; font-weight: 500; }
+.opening-tools .part-buttons button[aria-pressed="true"] { color: #d7f29c; border-color: #8fae68; background: #303c29; }
+.opening-tools select { width: 100%; padding: 9px; background: #222820; color: #e3e9dc; border: 1px solid #49533f; border-radius: 5px; }
+.opening-feedback { padding: 12px; margin: 0; border: 1px solid #5c6e4b; border-radius: 6px; font-size: 12px; line-height: 1.6; background: #293024; color: #e2ebd6; }
+.opening-tools .primary-button { justify-content: space-between; }
+.opening-tools .field-hint { margin: 0; }
+.opening-edit-fields { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.opening-tools .opening-edit-fields .construction-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.opening-summary { margin: 0; display: grid; gap: 7px; }
+.opening-summary dt { color: var(--muted); font-size: 11px; margin-top: 8px; }
+.opening-summary dd { margin: 0; font-size: 14px; }

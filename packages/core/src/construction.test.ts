@@ -1,3 +1,5 @@
+import { TERRAIN_MATERIAL_DEFAULTS, WATER_APPEARANCE_DEFAULTS } from './materials';
+import { COAST_DEFAULTS } from './model';
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import tree from '../../../examples/demo-tree.asset.json';
@@ -11,8 +13,8 @@ const makeEditor = () => { const editor = new Editor(createProject()); editor.ex
 
 describe('M2 building and asset authoring', () => {
   it('migrates authored v2 heights exactly and preserves all existing objects', () => {
-    const migrated = parseProject(v2); expect(migrated.version).toBe(4); expect(migrated.assets).toEqual([]);
-    expect(migrated.site).toEqual(v2.site); expect(migrated.entities).toEqual(v2.entities);
+    const migrated = parseProject(v2); expect(migrated.version).toBe(13); expect(migrated.assets).toEqual([]);
+    expect(migrated.site).toEqual({ ...v2.site, materials: TERRAIN_MATERIAL_DEFAULTS }); expect(migrated.entities).toEqual(v2.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity));
   });
   it('adds a coherent building in one step and cascades level deletion with reversible history', () => {
     const editor = new Editor(createProject()), before = editor.getSnapshot().project;

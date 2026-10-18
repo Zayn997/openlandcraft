@@ -1,0 +1,30 @@
+import {useEffect,useState} from 'react';
+import {Check,Plus,RotateCcw,Trash2} from 'lucide-react';
+import type {Editor,Lake} from '@openlandcraft/core';
+import {polygonArea,type PathPoint} from '@openlandcraft/landscape';
+import {NumberField} from './NumberField';
+import {WaterMaterialFields} from './MaterialFields';
+
+export function LakeInspector({lake,editor,cancel,playing,onReset,onStep,snapping,onSnapping}:{lake:Lake;editor:Editor;cancel:()=>void;playing:boolean;onReset:()=>void;onStep:()=>void;snapping:boolean;onSnapping:(value:boolean)=>void}){
+  const [draft,setDraft]=useState(lake),[error,setError]=useState('');useEffect(()=>setDraft(lake),[lake]);
+  const state=editor.getSnapshot(),site=state.project.site,minBank=Math.max(1,Math.ceil(10*Math.max(site.width/(site.terrain.columns-1),site.depth/(site.terrain.rows-1)))/10);
+  const begin=()=>{if(!editor.getSnapshot().gestureLabel)editor.begin('Edit lake');};
+  const change=(next:Lake)=>{setDraft(next);begin();try{editor.preview({type:'replace',entity:next});setError('');}catch(error){setError(error instanceof Error?error.message:'Invalid lake.');}};
+  const number=(key:'level'|'depth'|'bank'|'amplitude'|'wavelength'|'direction'|'speed'|'foam'|'foamPersistence'|'wetBank'|'dryingTime',label:string,min:number,max:number,unit='m')=><NumberField label={label} value={draft[key]} min={min} max={max} unit={unit} onChange={value=>change({...draft,[key]:value})}/>;
+  return <div className="inspector-content lake-inspector"><div className="water-object-title"><h3>{lake.name}</h3><span>Lake · {polygonArea(draft.points).toFixed(1)} m²</span></div>
+    <label className="path-snap"><input type="checkbox" aria-label="Snap lake points" checked={snapping} onChange={e=>onSnapping(e.target.checked)}/>Snap boundary points to 0.5 m grid</label>
+    <form onInputCapture={begin} onSubmit={e=>{e.preventDefault();if(!error)editor.commit();}}>
+      <section className="property-section"><h3>Basin</h3><label className="name-field">Name<input aria-label="Lake name" required maxLength={80} value={draft.name} onChange={e=>change({...draft,name:e.target.value})}/></label><div className="river-settings">{number('level','Lake water level',-8,30)}{number('depth','Lake depth',0.2,5)}{number('bank','Lake bank blend',minBank,8)}</div><p className="field-hint">A level surface with a carved basin. Water stays within this shoreline and its bank blend; it does not flood across the site.</p></section>
+      <details className="water-details" open><summary>Surface motion</summary><div className="river-settings">{number('amplitude','Lake wave amplitude',0,0.3)}{number('wavelength','Lake wavelength',1.5,12)}{number('direction','Lake wind direction',0,360,'°')}{number('speed','Lake animation speed',0,3,'×')}</div><p className="field-hint">Small wind waves respond to depth. Direction is measured toward +X at 0° and +Z at 90°.</p><div className="coast-preview"><button type="button" disabled={!!state.gestureLabel} onClick={onReset}>Reset lake preview</button><button type="button" disabled={!!state.gestureLabel||playing||lake.speed===0} onClick={onStep}>Step lake 0.5 s</button></div></details>
+      <WaterMaterialFields color={draft.color} appearance={draft.appearance} onChange={values=>change({...draft,...values})}/>
+      <label className="color-field"><input type="color" aria-label="Lake color" value={draft.color} onChange={e=>change({...draft,color:e.target.value})}/><span>Lake color</span><code>{draft.color.toUpperCase()}</code></label>
+      <details className="water-details"><summary>Shore foam and wet banks</summary><div className="river-settings">{number('foam','Lake foam',0,1,'')}{number('foamPersistence','Lake foam lifetime',1,20,'s')}{number('wetBank','Lake bank wetness',0,1,'')}{number('dryingTime','Lake bank drying',5,90,'s')}</div></details>
+      <section className="property-section"><h3>Boundary points<span>{draft.points.length} / 24</span></h3><p className="field-hint">Drag numbered handles or edit X/Z. The final point connects to the first. Crossings and river-bank overlap are rejected.</p>
+        {draft.points.map((p,i)=><div key={i} className="river-point-editor"><div><strong>Point {i+1}</strong><button type="button" aria-label={`Insert after lake point ${i+1}`} disabled={draft.points.length>=24} onClick={()=>{const points=[...draft.points],next=points[(i+1)%points.length];points.splice(i+1,0,[(p[0]+next[0])/2,(p[1]+next[1])/2]);change({...draft,points});}}><Plus size={14}/></button><button type="button" aria-label={`Remove lake point ${i+1}`} disabled={draft.points.length<=3} onClick={()=>change({...draft,points:draft.points.filter((_,j)=>i!==j)})}><Trash2 size={14}/></button></div><div className="construction-fields">{p.map((value,axis)=><NumberField key={axis} label={`Lake point ${i+1} ${axis===0?'X':'Z'}`} value={value} min={-100} max={100} onChange={value=>{const points=draft.points.map(p=>[...p] as PathPoint);points[i][axis]=value;change({...draft,points});}}/>)}</div></div>)}
+      </section>
+      {error&&<p className="river-error" role="alert">{error}</p>}
+      <div className={`edit-actions ${state.gestureLabel?'has-preview':''}`}><div><span className="status-dot"/>{error?'Resolve the invalid edit':state.gestureLabel?'Previewing lake changes':'All changes applied'}</div><button className="primary-button" type="submit" disabled={!state.gestureLabel||!!error}><Check size={15}/>Apply lake changes</button><button type="button" className="cancel-button" disabled={!state.gestureLabel} onClick={cancel}><RotateCcw size={14}/>Cancel preview<span>Esc</span></button></div>
+      <div className="object-actions"><button type="button" className="delete-button" disabled={!!state.gestureLabel} onClick={()=>editor.execute({type:'remove',id:lake.id},'Delete lake')}><Trash2 size={14}/>Delete lake</button></div>
+    </form><p className="scope-note">Hiding or deleting this lake preserves your sculpted terrain. This version supports one lake and one separate river. Ocean has its own controls.</p>
+  </div>;
+}

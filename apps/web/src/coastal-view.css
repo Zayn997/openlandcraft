@@ -1,0 +1,6 @@
+@media (max-width: 760px) {
+  .view-switch button { min-width: 44px; min-height: 44px; }
+  .view-switch { padding: 3px; }
+  .view-label { top: 26px; }
+  .viewport-tools { top: 77px; }
+}
