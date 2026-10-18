@@ -1,0 +1,84 @@
+{
+  "format": "openlandcraft.project",
+  "version": 1,
+  "name": "Coastal study",
+  "units": "m",
+  "upAxis": "Y",
+  "site": {
+    "id": "site",
+    "width": 90,
+    "depth": 72,
+    "shoreX": 1,
+    "slope": 0.16
+  },
+  "entities": [
+    {
+      "id": "block-pavilion",
+      "parentId": "site",
+      "name": "Pavilion 01",
+      "visible": true,
+      "kind": "block",
+      "position": [
+        -13,
+        3.0647742590283102,
+        1
+      ],
+      "size": [
+        10,
+        6,
+        7
+      ],
+      "rotation": 0,
+      "color": "#e4ded1"
+    },
+    {
+      "id": "block-studio",
+      "parentId": "site",
+      "name": "Studio 02",
+      "visible": true,
+      "kind": "block",
+      "position": [
+        -22,
+        3.437940273366561,
+        -10
+      ],
+      "size": [
+        7,
+        3,
+        5
+      ],
+      "rotation": 0,
+      "color": "#c4ccba"
+    },
+    {
+      "id": "block-terrace",
+      "parentId": "site",
+      "name": "Terrace 03",
+      "visible": true,
+      "kind": "block",
+      "position": [
+        -12,
+        1.7993116957556023,
+        -10
+      ],
+      "size": [
+        8,
+        0.5,
+        5
+      ],
+      "rotation": 0,
+      "color": "#b8ac98"
+    },
+    {
+      "id": "ocean-main",
+      "parentId": "site",
+      "name": "Coastal water",
+      "visible": true,
+      "kind": "ocean",
+      "level": 1.2,
+      "amplitude": 0.3,
+      "speed": 1.1,
+      "color": "#3e8e90"
+    }
+  ]
+}

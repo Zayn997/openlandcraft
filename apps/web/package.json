@@ -1,0 +1,12 @@
+{
+  "name": "@openlandcraft/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@openlandcraft/landscape": "*",
+    "@openlandcraft/core": "*",
+    "@openlandcraft/project": "*",
+    "@openlandcraft/viewport": "*"
+  }
+}
