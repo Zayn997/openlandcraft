@@ -41,7 +41,7 @@ export type PlantingResult={instances:Instance[];requested:number;target:number;
 export function generatePlanting(project:Project,region:PlantingRegion):PlantingResult {
   // Validate parameters before using them as loop bounds or random state.
   const entities=project.entities.filter(e=>e.id!==region.id&&!(e.kind==='instance'&&e.regionId===region.id));
-  const baseline=parseProject({...project,entities:[...entities,region]}),site=evaluateProject(baseline).site;
+  const baseline=parseProject({...project,entities:[...entities,region],objectLayers:Object.fromEntries(Object.entries(project.objectLayers).filter(([id])=>id==='terrain'||id===region.id||entities.some(e=>e.id===id)))}),site=evaluateProject(baseline).site;
   const blocked=plantingObstacle({...baseline,site},region),occupied=entities.filter((e):e is Instance=>e.kind==='instance'),ids=new Set(entities.map(e=>e.id));
   const requested=Math.floor(polygonArea(region.points)*region.density/100),target=Math.min(200,requested),instances:Instance[]=[];
   const minX=Math.min(...region.points.map(p=>p[0])),maxX=Math.max(...region.points.map(p=>p[0])),minZ=Math.min(...region.points.map(p=>p[1])),maxZ=Math.max(...region.points.map(p=>p[1]));

@@ -1,3 +1,4 @@
+import { defaultLayers } from './layers';
 import 'fake-indexeddb/auto';
 import {describe,expect,it} from 'vitest';
 import legacy from '../../../examples/coastal-paths.olc.json';
@@ -9,8 +10,8 @@ const flat=()=>createSite({name:'Water System',width:80,depth:64,resolution:129,
 const boundary:PathPoint[]=[[-10,-10],[10,-10],[10,10],[-10,10]];
 describe('lake document and reversible basins',()=>{
   it('migrates version 9 while retaining exact paths, rivers, ocean, terrain and source bytes',()=>{
-    const before=structuredClone(legacy),current=parseProject(legacy);expect(current).toEqual({...legacy,version:13});expect(legacy).toEqual(before);
-    expect(()=>parseProject({...current,version:14})).toThrow();
+    const before=structuredClone(legacy),current=parseProject(legacy);expect(current).toEqual({...legacy,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"});expect(legacy).toEqual(before);
+    expect(()=>parseProject({...current,version:15})).toThrow();
     expect(()=>parseProject({...legacy,entities:[...legacy.entities,createLake(current)]})).toThrow();
   });
   it('supports concave boundaries and either winding, rejecting crossings, contact and narrow necks',()=>{

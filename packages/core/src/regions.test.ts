@@ -1,3 +1,4 @@
+import { defaultLayers } from './layers';
 import 'fake-indexeddb/auto';
 import {describe,expect,it} from 'vitest';
 import legacy from '../../../examples/water-system.olc.json';
@@ -10,7 +11,7 @@ const scene=()=>({...createSite({name:'Regions',width:80,depth:80,resolution:129
 const planting=()=>createRegion(scene(),'planting',points) as PlantingRegion;
 describe('M6c landscape regions',()=>{
   it('migrates v10 with exact terrain, water and source bytes; old versions reject new entities',()=>{
-    const before=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...legacy,version:13});expect(legacy).toEqual(before);
+    const before=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...legacy,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"});expect(legacy).toEqual(before);
     expect(()=>parseProject({...legacy,entities:[...legacy.entities,createRegion(parseProject(legacy),'material')]})).toThrow();
     expect(()=>parseProject({...legacy,version:14})).toThrow();
   });

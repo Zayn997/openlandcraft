@@ -1,3 +1,4 @@
+import { canEditObject, objectLayer, objectOwners, layerState, type Layer } from './layers';
 import {replaceJoinedWall} from './architecture';
 import {duplicateAbove} from './floors';
 import { parseProject, type Entity, type Project } from './model';
@@ -8,13 +9,17 @@ import type { TerrainMaterials } from './materials';
 import { diffHeights, restoreHeights, terrainSchema, type Heightfield, type HeightPatch } from '@openlandcraft/landscape';
 
 export type Command =
+  | {type:'layer';layer:Layer}
+  | {type:'removeLayer';id:string}
+  | {type:'activeLayer';id:string}
+  | {type:'assignLayer';ids:string[];layerId:string}
   | {type:'duplicateAbove';sourceId:string;height:number;prefix:string}
   | {type:'ungroup';id:string}
   | {type:'planting';region:PlantingRegion}
   | { type: 'batch'; commands: Command[] }
   | { type: 'replace'; entity: Entity }
   | { type: 'add'; entity: Entity }
-  | { type: 'insert'; entities: Entity[]; assets?: Asset[] }
+  | { type: 'insert'; entities: Entity[]; assets?: Asset[]; objectLayers?: Record<string,string> }
   | { type: 'asset'; asset: Asset }
   | { type: 'removeAsset'; id: string }
   | { type: 'remove'; id: string }
@@ -28,6 +33,7 @@ export type EditorState = {
   preview: Project | null;
   selectedId: string | null;
   revision: number;
+  isolatedLayerId: string | null;
   past: readonly Entry[];
   future: readonly Entry[];
   gestureLabel: string | null;
@@ -45,12 +51,35 @@ function freeze<T>(value: T): T {
 export function applyCommand(project: Project, command: Command): Project {
   if (command.type === 'batch') return command.commands.reduce(applyCommand, project);
   if (command.type === 'terrain') {
+    if (!canEditObject(project, 'terrain')) throw new Error('Unlock and show the terrain layer before editing.');
     const field = terrainSchema.parse(command.field);
     if (field.columns !== project.site.terrain.columns || field.rows !== project.site.terrain.rows) throw new Error('A brush cannot change terrain resolution.');
     return freeze({ ...project, site: { ...project.site, terrain: field } });
   }
   let candidate: Project;
   switch (command.type) {
+    case 'layer': candidate={...project,layers:project.layers.some(l=>l.id===command.layer.id)?project.layers.map(l=>l.id===command.layer.id?command.layer:l):[...project.layers,command.layer]}; break;
+    case 'activeLayer': {
+      const status=layerState(project,command.id);
+      if(!status.visible||status.locked)throw new Error('Choose a visible, unlocked layer for new objects.');
+      candidate={...project,activeLayerId:command.id};break;
+    }
+    case 'assignLayer': {
+      const status=layerState(project,command.layerId);
+      if(!status.visible||status.locked)throw new Error('Unlock and show the destination layer first.');
+      if(command.ids.some(id=>id!=='terrain'&&!project.entities.some(e=>e.id===id)))throw new Error('Choose existing objects to assign.');
+      const ids=new Set(command.ids);
+      let count=-1;
+      while(count!==ids.size){count=ids.size;for(const entity of project.entities)if(objectOwners(project,entity.id).some(id=>ids.has(id)))ids.add(entity.id);}
+      if([...ids].some(id=>!canEditObject(project,id)))throw new Error('Unlock and show the selected objects and their contents before moving them.');
+      candidate={...project,objectLayers:{...project.objectLayers,...Object.fromEntries([...ids].map(id=>[id,command.layerId]))}};break;
+    }
+    case 'removeLayer': {
+      if(command.id==='default')throw new Error('Default cannot be deleted.');
+      if(!project.layers.some(l=>l.id===command.id))throw new Error('The layer no longer exists.');
+      if(project.layers.some(l=>l.parentId===command.id)||['terrain',...project.entities.map(e=>e.id)].some(id=>objectLayer(project,id)===command.id))throw new Error('Move the objects and sublayers before deleting this layer.');
+      candidate={...project,layers:project.layers.filter(l=>l.id!==command.id),activeLayerId:project.activeLayerId===command.id?null:project.activeLayerId};break;
+    }
     case 'duplicateAbove': candidate=duplicateAbove(project,command.sourceId,command.height,command.prefix).project; break;
     case 'ungroup': {
       if(!project.entities.some(e=>e.id===command.id&&e.kind==='unit'))throw new Error('Choose a unit to ungroup.');
@@ -72,7 +101,7 @@ export function applyCommand(project: Project, command: Command): Project {
       if(current&&current.kind!=='plantingRegion')throw new Error('An object cannot change its kind.');
       candidate=regeneratePlanting(project,command.region);break;
     }
-    case 'insert': candidate = { ...project, entities: [...project.entities, ...command.entities], assets: [...project.assets, ...(command.assets ?? [])] }; break;
+    case 'insert': candidate = { ...project, entities: [...project.entities, ...command.entities], assets: [...project.assets, ...(command.assets ?? [])], objectLayers:{...project.objectLayers,...command.objectLayers} }; break;
     case 'asset': {
       if (!project.assets.some((asset) => asset.id === command.asset.id)) throw new Error('The model no longer exists.');
       candidate = { ...project, assets: project.assets.map((asset) => asset.id === command.asset.id ? command.asset : asset) }; break;
@@ -94,6 +123,27 @@ export function applyCommand(project: Project, command: Command): Project {
     case 'rename': candidate = { ...project, name: command.name }; break;
     case 'materials': candidate = { ...project, site:{...project.site,materials:command.materials} }; break;
   }
+  const layerCommand=['layer','removeLayer','activeLayer','assignLayer'].includes(command.type);
+  if(!layerCommand){
+    const changed=new Set(project.entities.filter(before=>JSON.stringify(before)!==JSON.stringify(candidate.entities.find(e=>e.id===before.id))).map(e=>e.id));
+    for(const entity of project.entities){
+      const owners=(id:string,seen=new Set<string>()):boolean=>{if(seen.has(id))return false;seen.add(id);return changed.has(id)||objectOwners(project,id).some(parent=>owners(parent,seen));};
+      if(owners(entity.id)&&!canEditObject(project,entity.id))throw new Error('Unlock and show the layer containing '+entity.name+' before editing.');
+    }
+    if(command.type==='materials'&&!canEditObject(project,'terrain'))throw new Error('Unlock and show the terrain layer before editing.');
+    const added=candidate.entities.filter(e=>!project.entities.some(old=>old.id===e.id));
+    const assignments={...candidate.objectLayers};
+    for(const entity of added){
+      const inherited=entity.kind==='instance'&&entity.regionId?(assignments[entity.regionId]??objectLayer(candidate,entity.regionId)):null;
+      const destination=assignments[entity.id]??inherited??project.activeLayerId;
+      if(!destination||!layerState(candidate,destination).visible||layerState(candidate,destination).locked)throw new Error('Choose a visible, unlocked active layer before creating objects.');
+      assignments[entity.id]=destination;
+    }
+    const assigned={...candidate,objectLayers:assignments};
+    for(const entity of added)if(objectOwners(assigned,entity.id).some(id=>!canEditObject(assigned,id)))throw new Error('Unlock and show the parent object before adding elements.');
+    candidate={...candidate,objectLayers:Object.fromEntries(Object.entries(assignments).filter(([id])=>id==='terrain'||candidate.entities.some(e=>e.id===id)))};
+  }
+  if(candidate.activeLayerId){const status=layerState(candidate,candidate.activeLayerId);if(!status.visible||status.locked)candidate={...candidate,activeLayerId:candidate.layers.find(l=>{const s=layerState(candidate,l.id);return s.visible&&!s.locked;})?.id??null};}
   const parsed = parseProject(candidate);
   // Entity edits share the unchanged terrain instead of retaining duplicate grids.
   parsed.site.terrain = project.site.terrain;
@@ -106,18 +156,24 @@ export class Editor {
   private state: EditorState;
   private listeners = new Set<() => void>();
   constructor(project: Project) {
-    this.state = { project: freeze(parseProject(project)), preview: null, selectedId: 'block-pavilion', revision: 0, past: [], future: [], gestureLabel: null };
+    this.state = { project: freeze(parseProject(project)), preview: null, selectedId: 'block-pavilion', revision: 0, isolatedLayerId: null, past: [], future: [], gestureLabel: null };
     this.reconcileSelection();
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private reconcileSelection() {
+    if(this.state.isolatedLayerId&&!this.state.project.layers.some(l=>l.id===this.state.isolatedLayerId))this.state={...this.state,isolatedLayerId:null};
+    if(this.state.selectedId&&!canEditObject(this.state.project,this.state.selectedId,this.state.isolatedLayerId))this.state={...this.state,selectedId:null};
     if (this.state.selectedId !== 'terrain' && !this.state.project.entities.some((e) => e.id === this.state.selectedId)) this.state = { ...this.state, selectedId: null };
   }
   private publish(patch: Partial<EditorState>) {
     this.state = { ...this.state, ...patch };
     this.reconcileSelection();
     this.listeners.forEach((listener) => listener());
+  }
+  isolateLayer(id: string | null) {
+    this.cancel();
+    this.publish({isolatedLayerId:id});
   }
   select(id: string | null) {
     if (this.state.gestureLabel) this.cancel();
@@ -127,10 +183,11 @@ export class Editor {
     const before = this.state.project;
     const sameEntities = project.entities === before.entities || project.entities.length === before.entities.length && project.entities.every((entity, index) => entity === before.entities[index] || JSON.stringify(entity) === JSON.stringify(before.entities[index]));
     const sameAssets = project.assets === before.assets || project.assets.length === before.assets.length && project.assets.every((asset, index) => { const previous = before.assets[index]; return asset.id === previous.id && asset.name === previous.name && asset.attribution === previous.attribution && asset.data === previous.data; });
+    const sameLayers = JSON.stringify([project.layers,project.objectLayers,project.activeLayerId])===JSON.stringify([before.layers,before.objectLayers,before.activeLayerId]);
     const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
     const sameMaterials=JSON.stringify(project.site.materials)===JSON.stringify(before.site.materials);
-    const terrainOnly = sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution;
+    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution;
     const patch = terrainOnly ? diffHeights(before.site.terrain, project.site.terrain) : null;
     if (patch && !patch.indices.length) {
       this.publish({ preview: null, gestureLabel: null });
@@ -143,7 +200,14 @@ export class Editor {
   }
   execute(command: Command, label: string) {
     if (this.state.gestureLabel) throw new Error('Finish or cancel the current edit first.');
-    this.commitProject(applyCommand(this.state.project, command), label);
+    const project=applyCommand(this.state.project, command);
+    this.checkIsolation(project,command);
+    this.commitProject(project, label);
+  }
+  private checkIsolation(project:Project,command:Command) {
+    if(!this.state.isolatedLayerId)return;
+    if(command.type==='terrain'&&!canEditObject(project,'terrain',this.state.isolatedLayerId))throw new Error('Restore layer isolation before editing the terrain.');
+    for(const entity of project.entities)if(!this.state.project.entities.some(e=>e.id===entity.id)&&!canEditObject(project,entity.id,this.state.isolatedLayerId))throw new Error('Restore layer isolation or choose an active layer inside it before creating objects.');
   }
   replaceProject(value: unknown, label: string) {
     const project = freeze(parseProject(value));
@@ -156,7 +220,9 @@ export class Editor {
   preview(command: Command) {
     if (!this.state.gestureLabel) throw new Error('Start an edit before previewing.');
     // Every preview starts from the committed baseline, never the previous frame.
-    this.publish({ preview: applyCommand(this.state.project, command) });
+    const preview=applyCommand(this.state.project, command);
+    this.checkIsolation(preview,command);
+    this.publish({ preview });
   }
   commit() {
     if (this.state.gestureLabel && this.state.preview) this.commitProject(this.state.preview, this.state.gestureLabel);
@@ -181,6 +247,6 @@ export class Editor {
   load(value: unknown) {
     // Parse completely before touching the current document or draft.
     const project = freeze(parseProject(value));
-    this.publish({ project, preview: null, gestureLabel: null, past: [], future: [], selectedId: null, revision: this.state.revision + 1 });
+    this.publish({ project, preview: null, gestureLabel: null, past: [], future: [], selectedId: null, isolatedLayerId:null, revision: this.state.revision + 1 });
   }
 }

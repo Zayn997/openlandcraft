@@ -1,3 +1,4 @@
+import { defaultLayers } from './layers';
 import 'fake-indexeddb/auto';
 import {describe,expect,it} from 'vitest';
 import legacy from '../../../examples/landscape-regions.olc.json';
@@ -9,11 +10,11 @@ const firstWall=(p=scene())=>p.entities.find((e):e is Wall=>e.kind==='wall')!;
 const opening={id:'door',kind:'door' as const,offset:1,width:0.9,height:2.1,sill:0};
 describe('M7 architectural editing',()=>{
   it('migrates v11 without mutating terrain, water, planting, or embedded sources',()=>{
-    const before=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...legacy,version:13});expect(legacy).toEqual(before);
+    const before=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...legacy,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"});expect(legacy).toEqual(before);
     const p=scene(),w=firstWall(p);expect(()=>parseProject({...p,version:11,entities:p.entities.map(e=>e.id===w.id?{...w,openings:[opening]}:e)})).toThrow();
   });
   it('preserves independent legacy walls, including mixed profiles, until joining is explicitly enabled',()=>{
-    const p=scene(),entities=p.entities.map(e=>{if(e.kind!=='wall')return e;const {joins,...old}=e;return {...old,height:e.id===firstWall(p).id?4:3.2};});
+    const current=scene(),{layers,objectLayers,activeLayerId,...p}=current,entities=p.entities.map(e=>{if(e.kind!=='wall')return e;const {joins,...old}=e;return {...old,height:e.id===firstWall(current).id?4:3.2};});
     const migrated=parseProject({...p,version:11,entities});expect(migrated.entities).toEqual(entities);
     const editor=new Editor(migrated),wall=firstWall(migrated);
     editor.execute({type:'replace',entity:{...wall,end:[6,-4]}},'Independent');

@@ -1,3 +1,4 @@
+import { canEditObject } from '@openlandcraft/core';
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -45,7 +46,7 @@ export function DragCopy(props: Props) {
         return material?.visible !== false;
       });
       const hit = hits[0], picked = hit && metadata(hit);
-      if (!picked) return;
+      if (!picked || !canEditObject(state.project,picked.id,state.isolatedLayerId)) return;
       block(event); suppressClick = true;
       try {
         const selected = state.project.entities.find(e=>e.id===latest.current.selectedId);

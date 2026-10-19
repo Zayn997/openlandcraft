@@ -1,3 +1,6 @@
+import { canEditObject, objectLayer } from '@openlandcraft/core';
+import { LayersPanel } from './LayersPanel';
+import { WorkspaceSidebar } from './WorkspaceSidebar';
 import {OutlineEditor} from './OutlineEditor';
 import type {OutlineHandle} from '../../../packages/viewport/src/outline-edit';
 import {WallEditor} from './WallEditor';
@@ -159,7 +162,7 @@ export function App() {
     try{const plan=duplicateAbove(state.project,copyDraft.sourceId,copyDraft.height,copyDraft.prefix);applyCommand(state.project,{type:'duplicateAbove',...copyDraft});return {plan,error:''};}
     catch(error){return {plan:null,error:error instanceof Error?error.message:'The copy cannot be placed.'};}
   },[copyDraft,state.project,state.selectedId,state.gestureLabel]);
-  useEffect(()=>{setCopySpacing(null);setCopyDraft(d=>d?.sourceId===state.selectedId?d:null);setSelectedParts(ids=>ids.filter(id=>state.project.entities.some(e=>e.id===id)));},[state.selectedId,state.revision]);
+  useEffect(()=>{setCopySpacing(null);setCopyDraft(d=>d?.sourceId===state.selectedId?d:null);setSelectedParts(ids=>ids.filter(id=>(id==='terrain'||state.project.entities.some(e=>e.id===id))&&canEditObject(state.project,id,state.isolatedLayerId)));},[state.selectedId,state.revision,state.isolatedLayerId]);
   const hasWater = project.entities.some(
     (entity) =>
       entity.visible && (entity.kind === "ocean" || entity.kind === "river" || entity.kind === "lake"),
@@ -310,7 +313,9 @@ export function App() {
   }, []);
   const select = useCallback(
     (id: string | null, additive = false) => {
-      const before=editor.getSnapshot(),entity=before.project.entities.find(e=>e.id===id);
+      const before=editor.getSnapshot();
+      if(id&&!canEditObject(before.project,id,before.isolatedLayerId))return;
+      const entity=before.project.entities.find(e=>e.id===id);
       setCopyDraft(null);setOpeningFocus(null);
       if(additive&&entity&&isBuildingPart(entity)){
         const previous=before.project.entities.find(e=>e.id===before.selectedId);
@@ -363,20 +368,22 @@ export function App() {
   const pickWall=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');}};
   const finishWallEdit=()=>{editor.cancel();setTool('select');};
   const focusOpening=(focus:{wallId:string;openingId:string})=>{
+    if(!canEditObject(project,focus.wallId,state.isolatedLayerId))return;
     editor.select(focus.wallId);setOpeningFocus(focus);
     if(openingFocus?.wallId!==focus.wallId||openingFocus?.openingId!==focus.openingId)setTool('select');
     setOpeningStatus('Drag the tinted opening to move; use the square handles to resize.');
   };
   const pickOpening=(focus:{wallId:string;openingId:string},doubleClick=false)=>{
+    if(!canEditObject(project,focus.wallId,state.isolatedLayerId))return;
     const edit=doubleClick;
     editor.select(focus.wallId);setOpeningFocus(focus);setSelectedParts([]);setCopyDraft(null);setPanel('inspector');
     setTool(edit?'opening-edit':'select');
     setOpeningStatus(edit?'Drag the tinted opening to move; use the square handles to resize.':'Opening selected. Double-click to edit.');
   };
   const finishOpeningEdit=()=>{editor.cancel();setTool('select');};
-  const placementFloors=project.entities.filter((e):e is Level=>e.kind==='level'&&e.visible&&!project.entities.some(b=>b.kind==='building'&&b.id===e.buildingId&&!b.visible));
+  const placementFloors=project.entities.filter((e):e is Level=>e.kind==='level'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&!project.entities.some(b=>b.kind==='building'&&b.id===e.buildingId&&!b.visible));
   const placementLevel=placementFloors.find(e=>e.id===selectedLevel?.id)??placementFloors[0];
-  const openingHost=project.entities.find((e):e is Wall=>e.kind==='wall'&&e.visible&&e.id===openingFocus?.wallId&&e.parentId===placementLevel?.id&&!project.entities.some(unit=>unit.kind==='unit'&&!unit.visible&&unit.memberIds.includes(e.id)));
+  const openingHost=project.entities.find((e):e is Wall=>e.kind==='wall'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&e.id===openingFocus?.wallId&&e.parentId===placementLevel?.id&&!project.entities.some(unit=>unit.kind==='unit'&&!unit.visible&&unit.memberIds.includes(e.id)));
   const focusedOpening=openingHost?.openings?.find(o=>o.id===openingFocus?.openingId);
   const openingSettings:OpeningSettings={kind:tool==='door'?'door':'window',width:NaN,height:NaN,sill:NaN,snapping};
   const dimensions=openingDimensions[openingSettings.kind];
@@ -687,6 +694,7 @@ export function App() {
         return;
       const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
       const key = event.key.toLowerCase();
+      if(target?.closest('.layers-panel')&&!shortcut)return;
       if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         if (event.repeat || !['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
@@ -721,7 +729,7 @@ export function App() {
     };
     const onClipboard = (event: ClipboardEvent) => {
       const target = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      if (opening || importingModel || projectDialog || showHelp || event.defaultPrevented || target?.isContentEditable || target?.closest('input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])')) return;
+      if (opening || importingModel || projectDialog || showHelp || event.defaultPrevented || target?.isContentEditable || target?.closest('.layers-panel, input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])')) return;
       if (event.type === 'copy' && window.getSelection()?.toString()) return;
       event.preventDefault();
       if (!['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
@@ -831,7 +839,7 @@ export function App() {
           selected.position[2] + 4,
         ],
       };
-      editor.execute({ type: "add", entity }, "Duplicate block");
+      editor.execute({ type: "insert", entities:[entity], objectLayers:{[entity.id]:objectLayer(state.project,selected.id)} }, "Duplicate block");
       editor.select(entity.id);
     });
   const exportProject = () =>
@@ -980,67 +988,10 @@ export function App() {
       </header>
 
       <div className="workspace">
-        <aside
-          className={`scene-panel ${panel === "scene" ? "mobile-active" : ""}`}
-          aria-label="Scene hierarchy"
-        >
-          <div className="panel-heading">
-            <span>WORKSPACE</span>
-            <span className="version-tag">M7</span>
-          </div>
-          <button
-            className="sidebar-project-name"
-            aria-label="Rename project"
-            onClick={() => setProjectDialog("rename")}
-          >
-            {state.project.name}
-          </button>
-          <div className="workspace-name">
-            <div className="workspace-icon">
-              <Layers size={19} />
-            </div>
-            <div>
-              <strong>Site workspace</strong>
-              <span>Independent editor prototype</span>
-            </div>
-          </div>
-          <div className="scene-heading">
-            <span>SCENE</span>
-            <span>{project.entities.length + 1} objects</span>
-          </div>
-          <div className="site-row">
-            <ChevronDown size={14} />
-            <Mountain size={16} />
-            <span>
-              Site · {project.site.width} × {project.site.depth} m
-            </span>
-          </div>
-          <div className="tree-list" role="list" aria-label="Scene objects">
-            <div
-              className={`tree-row ${state.selectedId === "terrain" ? "selected" : ""}`}
-              role="listitem"
-            >
-              <button
-                className="tree-select"
-                aria-pressed={state.selectedId === "terrain"}
-                onClick={() => select("terrain")}
-              >
-                <span className="tree-guide" />
-                <Mountain size={15} />
-                <span>Site terrain</span>
-              </button>
-              <span className="small-tag">EDIT</span>
-            </div>
-            <SceneObjects
-              selectedIds={selectedParts}
-              entities={project.entities}
-              selectedId={state.selectedId}
-              editor={editor}
-              onSelect={select}
-              guard={guard}
-            />
-          </div>
-          <button className="add-object" onClick={addBlock}>
+        <WorkspaceSidebar name={state.project.name} mobileActive={panel==='scene'} onRename={()=>setProjectDialog('rename')}
+          layers={<LayersPanel project={state.project} editor={editor} selectedIds={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]} isolatedId={state.isolatedLayerId} guard={guard} onSelectObjects={ids=>{select(ids[0]??null);setSelectedParts(ids);}}/>}
+          objects={<SceneObjects project={project} selectedId={state.selectedId} selectedIds={selectedParts} editor={editor} onSelect={select} guard={guard} isolatedId={state.isolatedLayerId}/>}
+          actions={<><details className="creation-menu"><summary><Plus size={15}/>Add…</summary><div className="creation-menu-content" onClick={event=>{if((event.target as HTMLElement).closest('button:not(:disabled)'))event.currentTarget.parentElement?.removeAttribute('open');}}>          <button className="add-object" onClick={addBlock}>
             <Plus size={15} />
             Add massing block
           </button>
@@ -1059,13 +1010,7 @@ export function App() {
               <Focus size={14} />
               Draw footprint
             </button>
-            <button
-              disabled={importingModel}
-              onClick={() => modelInput.current?.click()}
-            >
-              <ArrowUpFromLine size={14} />
-              {importingModel ? "Reading GLB…" : "Import GLB"}
-            </button>
+
             <button
               disabled={importingModel}
               onClick={() => {
@@ -1153,13 +1098,14 @@ export function App() {
               })}
             </section>
           )}
-          <div className="sidebar-bottom">
-            <div className="sidebar-foot">
-              <span>OPENLANDCRAFT</span>
-              <span>0.0.1</span>
-            </div>
-          </div>
-        </aside>
+</div></details>            <button
+              disabled={importingModel}
+              onClick={() => modelInput.current?.click()}
+            >
+              <ArrowUpFromLine size={14} />
+              {importingModel ? "Reading GLB…" : "Import GLB"}
+            </button></>}
+        />
 
         <main className="stage" aria-label="3D editor">
           <div className="stage-toolbar">
@@ -1188,6 +1134,7 @@ export function App() {
               floorCopy={copyResult.plan}
               copyAnchor={copyElement}
               copying={!!copyDraft}
+              isolatedLayerId={state.isolatedLayerId}
               project={project}
               selectedId={state.selectedId}
               onSelect={select}

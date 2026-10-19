@@ -12,3 +12,4 @@ createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></R
 
 import "./regions.css";
 import './floors.css';
+import './layers.css';

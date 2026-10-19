@@ -1,10 +1,11 @@
+import { objectLayer } from './layers';
 import { applyCommand, type Command } from './editor';
 import { ownerLevel, isBuildingPart } from './floors';
 import { wallLength } from './architecture';
 import type { Asset } from './assets';
 import type { Entity, Opening, Project } from './model';
 
-export type EditorClipboard = { kind: 'opening'; opening: Opening } | { kind: 'entities'; entities: Entity[]; roots: string[]; assets: Asset[] };
+export type EditorClipboard = { kind: 'opening'; opening: Opening } | { kind: 'entities'; entities: Entity[]; roots: string[]; assets: Asset[]; objectLayers?:Record<string,string> };
 export function copySelection(project: Project, selectedId: string | null, selectedIds: readonly string[] = [], focus?: { wallId: string; openingId: string } | null): EditorClipboard {
   if (focus) {
     const host = project.entities.find(e => e.id === focus.wallId);
@@ -26,7 +27,7 @@ export function copySelection(project: Project, selectedId: string | null, selec
   }
   const entities = project.entities.filter(e => ids.has(e.id));
   const assetIds = new Set(entities.flatMap(e => 'assetId' in e ? [e.assetId] : []));
-  return structuredClone({ kind: 'entities', entities, roots, assets: project.assets.filter(a => assetIds.has(a.id)) });
+  return structuredClone({ kind: 'entities', entities, roots, objectLayers:Object.fromEntries(entities.map(e=>[e.id,objectLayer(project,e.id)])), assets: project.assets.filter(a => assetIds.has(a.id)) });
 }
 
 export type DragCopyPlacement = { worldDelta: [number, number]; snapping: boolean };
@@ -101,7 +102,7 @@ export function pasteSelection(project: Project, clipboard: EditorClipboard, sel
     if ((entity.kind === 'slab' || entity.kind === 'roof') && !idMap.has(source.parentId)) entity.center = [entity.center[0]+shift[0],entity.center[1]+shift[1]];
     return entity;
   });
-  const command: Command = { type: 'insert', entities, assets };
+  const command: Command = { type: 'insert', entities, assets, objectLayers:Object.fromEntries(clipboard.entities.flatMap(e=>{const layer=clipboard.objectLayers?.[e.id];return layer&&project.layers.some(l=>l.id===layer)?[[idMap.get(e.id)!,layer]]:[];})) };
   applyCommand(project, command);
   return { command, selectedIds: clipboard.roots.map(id => idMap.get(id)!), displaced };
 }

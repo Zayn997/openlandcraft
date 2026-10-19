@@ -20,3 +20,5 @@ export * from './wall-edit';
 export * from './outline-edit';
 export * from './selection-delete';
 export * from './clipboard';
+
+export * from './layers';

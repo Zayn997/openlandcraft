@@ -30,13 +30,13 @@ function StaticBatch({ source, instances, project, interactive, onSelect }: { so
     if (interactive && event.delta <= 4 && event.instanceId !== undefined && instances[event.instanceId]) { event.stopPropagation(); onSelect(instances[event.instanceId].id); }
   }} />;
 }
-function ModelContent({ source, instances, project, selectedId, interactive, onSelect }: { source: THREE.Group; instances: Instance[]; project: Project; selectedId: string | null; interactive: boolean; onSelect: (id: string) => void }) {
+function ModelContent({ source, instances, project, selectedId, selectedIds=[], interactive, onSelect }: { selectedIds?:string[]; source: THREE.Group; instances: Instance[]; project: Project; selectedId: string | null; interactive: boolean; onSelect: (id: string) => void }) {
   const meshes = useMemo(() => staticMeshes(source), [source]);
-  const selected = instances.find((entity) => entity.id === selectedId);
-  if (meshes) return <>{meshes.map((mesh) => <StaticBatch key={mesh.uuid} source={mesh} instances={instances} project={project} interactive={interactive} onSelect={onSelect} />)}{selected && <group position={instancePosition(selected, project)} rotation={[0, selected.rotation * Math.PI / 180, 0]} scale={selected.scale}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh></group>}</>;
-  return <>{instances.map((entity) => <group key={entity.id} userData={{copyEntityId:entity.id}} position={instancePosition(entity, project)} rotation={[0, entity.rotation * Math.PI / 180, 0]} scale={entity.scale} onClick={(event) => { if (interactive && event.delta <= 4) { event.stopPropagation(); onSelect(entity.id); } }}><ModelCopy source={source} interactive={interactive} />{entity.id === selectedId && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh>}</group>)}</>;
+  const selected = instances.filter((entity) => selectedIds.includes(entity.id)||entity.id === selectedId);
+  if (meshes) return <>{meshes.map((mesh) => <StaticBatch key={mesh.uuid} source={mesh} instances={instances} project={project} interactive={interactive} onSelect={onSelect} />)}{selected.map(selected=><group key={selected.id} position={instancePosition(selected, project)} rotation={[0, selected.rotation * Math.PI / 180, 0]} scale={selected.scale}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh></group>)}</>;
+  return <>{instances.map((entity) => <group key={entity.id} userData={{copyEntityId:entity.id}} position={instancePosition(entity, project)} rotation={[0, entity.rotation * Math.PI / 180, 0]} scale={entity.scale} onClick={(event) => { if (interactive && event.delta <= 4) { event.stopPropagation(); onSelect(entity.id); } }}><ModelCopy source={source} interactive={interactive} />{(selectedIds.includes(entity.id)||entity.id === selectedId) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh>}</group>)}</>;
 }
-export function ModelInstances({ asset, instances, project, selectedId, onSelect, onError, interactive }: {
+export function ModelInstances({ asset, instances, project, selectedId, selectedIds, onSelect, onError, interactive }: { selectedIds?:string[];
   asset: Asset; instances: Instance[]; project: Project; selectedId: string | null; onSelect: (id: string) => void; onError: (message: string) => void; interactive: boolean;
 }) {
   const [source, setSource] = useState<THREE.Group | null>(null);
@@ -46,7 +46,7 @@ export function ModelInstances({ asset, instances, project, selectedId, onSelect
     loadModel(asset).then((root) => { if (!alive) { disposeModel(root); return; } owned = root; setSource(root); }).catch((error: unknown) => { if (alive) onError(`${asset.name}: ${error instanceof Error ? error.message : 'Model could not load.'}`); });
     return () => { alive = false; if (owned) disposeModel(owned); };
   }, [asset.data]);
-  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent source={source} instances={instances} project={project} selectedId={selectedId} interactive={interactive} onSelect={onSelect} /></group> : null;
+  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent source={source} instances={instances} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect} /></group> : null;
 }
 
 function Part({ entity, walls, selected, dimensions, onSelect, onWallPick, onOutlinePick, activeEdit=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; activeEdit?: boolean; blocking?:boolean;interactive:boolean;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {
@@ -73,7 +73,7 @@ export function BuildingLevel({ level, parts, selectedId, selectedIds=[], onSele
 
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 type Movable = Extract<Entity, { kind: 'instance' | 'level' | 'block' }>;
-export function TransformGizmo({ entity, project, editor, mode, snapping }: { entity: Movable; project: Project; editor: Editor; mode: TransformMode; snapping: boolean }) {
+export function TransformGizmo({ entity, project, editor, mode, snapping, onError }: { onError:(message:string)=>void; entity: Movable; project: Project; editor: Editor; mode: TransformMode; snapping: boolean }) {
   const orbit = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
   const gl = useThree((state) => state.gl);
   const control = useRef<TransformControlsImpl | null>(null);
@@ -116,7 +116,7 @@ export function TransformGizmo({ entity, project, editor, mode, snapping }: { en
       const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(object.quaternion);
       const rotation = THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.z));
       const next: Movable = base.kind === 'instance' ? { ...base, position, rotation, scale: object.scale.toArray().map((value) => Math.max(0.05, Math.min(20, value))) as Instance['scale'] } : { ...base, position, rotation };
-      editor.preview({ type: 'replace', entity: next });
+      try { editor.preview({ type: 'replace', entity: next }); } catch(error) { editor.cancel(); latestReset.current(); onError(error instanceof Error?error.message:'The transform could not be applied.'); }
     }}
     onMouseUp={() => { if (dragging.current) { dragging.current = false; editor.commit(); } }} /></>;
 }

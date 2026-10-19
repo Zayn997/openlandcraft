@@ -1,3 +1,4 @@
+import { objectLayer } from './layers';
 import { footprint, sameCorner } from './architecture';
 import type { BuildingPart, Entity, Level, Project, Unit, Wall } from './model';
 
@@ -99,7 +100,12 @@ export function duplicateAbove(project: Project, sourceId: string, height: numbe
   if (entities.length > 1000) throw new Error('This copy exceeds the 1,000-element scene limit.');
   const ids = new Set(entities.map(e => e.id));
   if (ids.size !== entities.length) throw new Error('Copy IDs already exist. Start a new preview.');
-  const candidate={...project,entities};
+  const objectLayers={...project.objectLayers};
+  if(!occupied)objectLayers[target.id]=objectLayer(project,level.id);
+  content.forEach(p=>{objectLayers[map.get(p.id)!]=objectLayer(project,p.id);});
+  units.forEach((u,i)=>{objectLayers[copiedUnits[i].id]=objectLayer(project,u.id);});
+  if(!level.buildingId)objectLayers[buildingId]=objectLayer(project,level.id);
+  const candidate={...project,entities,objectLayers};
   if(new TextEncoder().encode(JSON.stringify(candidate,null,2)).length>40*1024*1024)throw new Error('This copy exceeds the 40 MB project limit.');
   return { project: candidate, selectedId: source.kind === 'unit' ? copiedUnits[0].id : target.id, levelId: target.id, addedIds: added.map(e => e.id), movedRoofIds, height };
 }

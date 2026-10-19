@@ -1,3 +1,4 @@
+import { layerSchema, layerIssue, defaultLayers } from './layers';
 import { z } from 'zod';
 import { architectureIssue } from './architecture';
 import { createHeightfield, lakeIssue, lakeRiverOverlap, regionIssue, pathIssue, riverIssue, sampleHeight, terrainSchema } from '@openlandcraft/landscape';
@@ -100,7 +101,10 @@ const versionNineSchema = versionEightSchema.extend({version:z.literal(9),entiti
 const versionTenSchema=versionNineSchema.extend({version:z.literal(10),entities:z.array(versionTenEntitySchema).max(1000)});
 const versionElevenSchema=versionTenSchema.extend({version:z.literal(11),entities:z.array(versionElevenEntitySchema).max(1000)});
 const versionTwelveSchema=versionElevenSchema.extend({version:z.literal(12),entities:z.array(versionTwelveEntitySchema).max(1000)});
-export const projectSchema = z.object({ ...envelope, version: z.literal(13), site: siteSchema.extend({ terrain: terrainSchema, materials: terrainMaterialsSchema }), assets: z.array(assetSchema).max(16) }).strict().superRefine((project, ctx) => {
+const versionThirteenSchema = z.object({ ...envelope, version: z.literal(13), site: siteSchema.extend({ terrain: terrainSchema, materials: terrainMaterialsSchema }), assets: z.array(assetSchema).max(16) }).strict();
+export const projectSchema = versionThirteenSchema.extend({ version: z.literal(14), layers: z.array(layerSchema).min(1).max(256), objectLayers: z.record(z.string(), z.string()), activeLayerId: z.string().nullable() }).superRefine((project, ctx) => {
+  const layersError = layerIssue(project, new Set(['terrain', ...project.entities.map(e => e.id)]));
+  if (layersError) ctx.addIssue({code:'custom',path:['layers'],message:layersError});
   const architectureError=architectureIssue(project.entities);
   if(architectureError)ctx.addIssue({code:'custom',path:['entities'],message:architectureError});
   const unitMembers=new Set<string>();
@@ -219,6 +223,7 @@ export function parseProject(value: unknown): Project {
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===10){const legacy=versionTenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:11};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===11){const legacy=versionElevenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:12};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===12){const legacy=versionTwelveSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:13};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===13){const legacy=versionThirteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:'default'};}
   const result = projectSchema.safeParse(candidate);
   if (!result.success) {
     const issue = result.error.issues[0];
