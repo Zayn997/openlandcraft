@@ -1,10 +1,12 @@
+import {OutlineEditor} from './OutlineEditor';
+import type {OutlineHandle} from '../../../packages/viewport/src/outline-edit';
 import {WallEditor} from './WallEditor';
 import {OpeningSelectionSummary} from './OpeningSelection';
 import {OpeningEditor} from './OpeningEditor';
 import {openingAtPoint, type OpeningSettings, type WallHit, type Level} from '@openlandcraft/core';
 import {OpeningTools, type OpeningDimensions} from './OpeningTools';
 import {createWallChain,snapWallPoint,type PlanPoint,type Wall} from '@openlandcraft/core';
-import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, unitForPart} from '@openlandcraft/core';
+import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, unitForPart, selectionDelete, copySelection, pasteSelection, type EditorClipboard} from '@openlandcraft/core';
 import {FloorTools,ArchitectureGroupInspector} from './FloorTools';
 import {
   useCallback,
@@ -145,6 +147,7 @@ export function App() {
     (entity) => entity.id === state.selectedId,
   );
   const [selectedParts,setSelectedParts]=useState<string[]>([]);
+  const clipboard = useRef<{ data: EditorClipboard; pastes: number; token: string } | null>(null);
   const [isolateFloor,setIsolateFloor]=useState(false);
   const [copyDraft,setCopyDraft]=useState<{sourceId:string;height:number;prefix:string}|null>(null);
   const [copySpacing,setCopySpacing]=useState<number|null>(null);
@@ -171,6 +174,7 @@ export function App() {
     "perspective",
   );
   const [frameToken, setFrameToken] = useState(0);
+  const [frameCancelToken, setFrameCancelToken] = useState(0);
   const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0'},window:{width:'1.4',height:'1.2',sill:'0.9'}});
   const [openingFocus,setOpeningFocus]=useState<{wallId:string;openingId:string}|null>(null);
   const [openingStatus,setOpeningStatus]=useState('Point at a wall to preview an opening.');
@@ -187,7 +191,7 @@ export function App() {
   );
   const [storageRecovery, setStorageRecovery] = useState(false);
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [tool, setTool] = useState<"select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "river" | "path" | "lake" | "region">(
+  const [tool, setTool] = useState<"select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
     "select",
   );
   const [regionsOpen,setRegionsOpen]=useState(false);
@@ -332,9 +336,10 @@ export function App() {
     [editor],
   );
   const cancelPreview = useCallback(() => {
+    setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
     if(tool==='select')setOpeningFocus(null);
-    setTool(current=>current==='door'||current==='window'||current==='opening-edit'||current==='wall-edit'?'select':current);
+    setTool(current=>current==='door'||current==='window'||current==='opening-edit'||current==='wall-edit'||current==='outline-edit'?'select':current);
     editor.cancel();
     setRiverDraft([]);
       setPathDraft([]);
@@ -347,6 +352,12 @@ export function App() {
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
   const editingWall=tool==='wall-edit';
+  const editingOutline=tool==='outline-edit';
+  const outlineTarget=(selected?.kind==='slab'||selected?.kind==='roof')&&selected.visible?selected:undefined;
+  const [outlineHandle,setOutlineHandle]=useState<OutlineHandle>({mode:'vertex',index:0});
+  const [outlineStatus,setOutlineStatus]=useState('Drag round corners or square edge handles to reshape the outline.');
+  const pickOutline=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus('Drag round corners or square edge handles to reshape the outline.');}};
+  const finishOutlineEdit=()=>{editor.cancel();setTool('select');};
   const wallTarget=selected?.kind==='wall'&&selected.visible?selected:undefined;
   const [wallStatus,setWallStatus]=useState('Drag the wall body or its Start / End handles.');
   const pickWall=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');}};
@@ -386,7 +397,7 @@ export function App() {
     });
     return placed;
   };
-  const chooseTool = (next: "select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "river" | "path" | "lake" | "region") => {
+  const chooseTool = (next: "select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region") => {
     setCopyDraft(null);setSelectedParts([]);setOpeningFocus(null);
     editor.cancel();
     if (next !== "select" && view === "shore") setView("perspective");
@@ -665,37 +676,79 @@ export function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (opening || importingModel) return;
+      if (opening || importingModel || event.defaultPrevented || event.isComposing) return;
       if (event.key === "Escape") {
         cancelPreview();
         setShowHelp(false);
         return;
       }
-      const target = event.target as HTMLElement;
-      if (target.closest("input, textarea, select, [contenteditable=true]"))
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (projectDialog || showHelp || target?.isContentEditable || target?.closest("input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])"))
         return;
-      if(event.key==='Enter'&&tool==='select'&&focusedOpening&&openingFocus){event.preventDefault();setTool('opening-edit');setOpeningStatus('Drag the tinted opening to move; use the square handles to resize.');return;}
-      if(event.key==='Enter'&&tool==='select'&&wallTarget&&!focusedOpening&&!selectedParts.length){event.preventDefault();setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');return;}
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
+      const key = event.key.toLowerCase();
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        if (event.repeat || !['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
+        if (editor.getSnapshot().gestureLabel || copyDraft) { setNotice('Finish or cancel the current edit before deleting.'); return; }
+        const removal = selectionDelete(editor.getSnapshot().project, editor.getSnapshot().selectedId, selectedParts, openingFocus);
+        if (removal && guard(() => editor.execute(removal.command, removal.label))) {
+          select(null);
+          setNotice(removal.label + '. Undo restores it.');
+        }
+        return;
+      }
+      const editKey = event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.repeat;
+      if(editKey&&tool==='select'&&focusedOpening&&openingFocus){event.preventDefault();setTool('opening-edit');setOpeningStatus('Drag the tinted opening to move; use the square handles to resize.');return;}
+      if(editKey&&tool==='select'&&wallTarget&&!focusedOpening&&!selectedParts.length){event.preventDefault();setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');return;}
+      if(editKey&&tool==='select'&&outlineTarget&&!selectedParts.length){event.preventDefault();setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus('Drag round corners or square edge handles to reshape the outline.');return;}
+      if (shortcut && key === "z") {
         event.preventDefault();
         event.shiftKey ? editor.redo() : editor.undo();
       } else if (
-        (event.ctrlKey || event.metaKey) &&
+        shortcut && !event.shiftKey &&
         event.key.toLowerCase() === "y"
       ) {
         event.preventDefault();
         editor.redo();
       } else if (
-        (event.ctrlKey || event.metaKey) &&
+        shortcut && !event.shiftKey &&
         event.key.toLowerCase() === "s"
       ) {
         event.preventDefault();
         queueSave(true);
-      } else if (event.key.toLowerCase() === "f") frame();
+      } else if (key === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.repeat) { event.preventDefault(); if (!editor.getSnapshot().gestureLabel) frame(); }
     };
+    const onClipboard = (event: ClipboardEvent) => {
+      const target = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (opening || importingModel || projectDialog || showHelp || event.defaultPrevented || target?.isContentEditable || target?.closest('input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])')) return;
+      if (event.type === 'copy' && window.getSelection()?.toString()) return;
+      event.preventDefault();
+      if (!['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
+      if (editor.getSnapshot().gestureLabel || copyDraft) { setNotice('Finish or cancel the current edit before copying or pasting.'); return; }
+      if (event.type === 'copy') guard(() => {
+        const data = copySelection(editor.getSnapshot().project, editor.getSnapshot().selectedId, selectedParts, openingFocus);
+        const token = 'OpenLandcraft selection: ' + crypto.randomUUID();
+        event.clipboardData?.setData('text/plain', token);
+        clipboard.current = { data, pastes: 0, token };
+        setNotice('Selection copied. Ctrl/Cmd V pastes an independent copy in this editor.');
+      });
+      else if (!clipboard.current || event.clipboardData?.getData('text/plain') !== clipboard.current.token) setNotice('Copy an element in this editor with Ctrl/Cmd C first.');
+      else guard(() => {
+        const clip = clipboard.current!;
+        const result = pasteSelection(editor.getSnapshot().project, clip.data, editor.getSnapshot().selectedId, crypto.randomUUID(), clip.pastes + 1);
+        editor.execute(result.command, 'Paste selection'); clip.pastes++;
+        select(result.selectedIds[0]);
+        if (result.focus) setOpeningFocus(result.focus);
+        else if (result.selectedIds.length > 1) setSelectedParts(result.selectedIds);
+        setNotice(result.focus ? 'Opening pasted into a free gap. Undo restores the previous wall.' : 'Independent copy pasted 2 m farther along X/Z. Undo removes this paste.');
+      });
+    };
+    window.addEventListener('copy', onClipboard);
+    window.addEventListener('paste', onClipboard);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editor, frame, queueSave, opening, importingModel, cancelPreview,tool,focusedOpening,openingFocus,wallTarget,selectedParts.length]);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener('copy', onClipboard); window.removeEventListener('paste', onClipboard); };
+  }, [editor, frame, queueSave, opening, importingModel, cancelPreview,tool,focusedOpening,openingFocus,wallTarget,outlineTarget,selectedParts,copyDraft,projectDialog,showHelp,guard,select]);
 
   const preview = (entity: Entity) =>
     guard(() => {
@@ -1121,8 +1174,12 @@ export function App() {
           </div>
           <div className="viewport-area">
             <Viewport
+              onCopyStatus={setNotice}
+              onCopyPlaced={result=>{select(result.selectedIds[0]);if(result.focus)setOpeningFocus(result.focus);else if(result.selectedIds.length>1)setSelectedParts(result.selectedIds);}}
               selectedIds={selectedParts}
-              isolateLevelId={placingOpening||editingOpening||editingWall?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
+              isolateLevelId={placingOpening||editingOpening||editingWall||editingOutline?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
+              onOutlinePick={pickOutline}
+              outlineEditing={editingOutline&&outlineTarget&&selectedLevel?{part:outlineTarget,level:selectedLevel,handle:outlineHandle,onHandle:setOutlineHandle,onStatus:setOutlineStatus}:undefined}
               onWallPick={pickWall}
               wallEditing={editingWall&&wallTarget&&selectedLevel?{wall:wallTarget,level:selectedLevel,onStatus:setWallStatus}:undefined}
               openingSelection={tool==='select'||editingWall?{focus:focusedOpening?openingFocus:null,onPick:pickOpening}:undefined}
@@ -1139,6 +1196,7 @@ export function App() {
               quality={quality}
               view={view}
               frameToken={frameToken}
+              frameCancelToken={frameCancelToken}
               onMetrics={setMetrics}
               editor={editor}
               tool={tool}
@@ -1438,8 +1496,8 @@ export function App() {
             <span>PROPERTIES</span>
             <Settings2 size={15} />
           </div>
-          {!placingOpening&&!editingOpening&&!editingWall&&!focusedOpening&&(!wallTarget||!!selectedParts.length)&&selectedLevel&&<FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/>}
-          {wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+          {!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/>}
+          {outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
             <div className="inspector-content terrain-inspector">
               <div className="object-heading">
                 <div className="object-icon">
@@ -2032,9 +2090,15 @@ export function App() {
               Select tool · drag to orbit · right-drag to pan · scroll to zoom
             </dd>
             <dt>Focus</dt>
-            <dd>F or the frame button</dd>
+            <dd>F or the frame button · smooth camera move; drag, scroll or Escape stops it</dd>
+            <dt>Copy / paste selection</dt>
+            <dd>Ctrl/Cmd C · Ctrl/Cmd V · independent copies in this editor; select a wall to paste a door/window</dd>
             <dt>History</dt>
             <dd>Ctrl/Cmd Z · Ctrl/Cmd Shift Z</dd>
+            <dt>Drag a copy</dt>
+            <dd>Alt + left-drag an element · release to place · Escape cancels</dd>
+            <dt>Delete selection</dt>
+            <dd>Delete or Backspace · undo restores the selection's contents</dd>
             <dt>Cancel preview</dt>
             <dd>Escape</dd>
             <dt>Save</dt>

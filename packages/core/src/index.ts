@@ -16,3 +16,7 @@ export * from './opening-placement';
 export * from './opening-edit';
 
 export * from './wall-edit';
+
+export * from './outline-edit';
+export * from './selection-delete';
+export * from './clipboard';

@@ -17,7 +17,7 @@ export function OpeningSelection({ level, walls, topView, focus, onPick }: Openi
       {wall.openings?.map(opening => {
         const selected = focus?.wallId === wall.id && focus.openingId === opening.id;
         const key = `${wall.id}/${opening.id}`, highlighted = selected || hovered === key;
-        return <mesh key={opening.id} position={[opening.offset + opening.width / 2, topView ? wall.height + 0.12 : opening.sill + opening.height / 2, 0]}
+        return <mesh key={opening.id} userData={{copyEntityId:wall.id,copyOpeningId:opening.id}} position={[opening.offset + opening.width / 2, topView ? wall.height + 0.12 : opening.sill + opening.height / 2, 0]}
           onPointerOver={event => { event.stopPropagation(); setHovered(key); }} onPointerOut={() => setHovered(null)}
           onClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 4) onPick({ wallId: wall.id, openingId: opening.id }, false); }}
           onDoubleClick={event => { event.stopPropagation(); if (event.button === 0 && event.delta <= 4) onPick({ wallId: wall.id, openingId: opening.id }, true); }}>

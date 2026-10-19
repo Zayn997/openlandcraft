@@ -69,7 +69,7 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
   };
   const events = { onPointerMove: move, onPointerUp: up, onPointerCancel: cancel, onLostPointerCapture: cancel, onClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation(), onDoubleClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation() };
   const color = rejected ? '#ed775f' : '#d7f29c', top = wall.elevation + wall.height;
-  return <group position={level.position} rotation={[0, level.rotation * Math.PI / 180, 0]} userData={{ waterCaptureExclude: true }}>
+  return <group position={level.position} rotation={[0, level.rotation * Math.PI / 180, 0]} userData={{ waterCaptureExclude: true, copyEntityId: wall.id }}>
     <mesh geometry={geometry} {...events} onPointerDown={event => down(event, 'move')}>
       <meshBasicMaterial color={color} transparent opacity={0.2} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
       <Edges color={color} lineWidth={2} raycast={noRaycast} />

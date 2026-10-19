@@ -107,7 +107,7 @@ export function OpeningEdit({ level, walls, editor, snapping, topView, focus, on
         const selected = focus?.wallId === wall.id && focus.openingId === opening.id;
         const center = opening.offset + opening.width / 2, y = topView ? wall.height + 0.12 : opening.sill + opening.height / 2;
         const color = selected ? rejected ? '#ed775f' : '#d7f29c' : '#8fbbb8';
-        return <group key={opening.id}>
+        return <group key={opening.id} userData={{copyEntityId:wall.id,copyOpeningId:opening.id}}>
           <mesh position={[center, y, 0]} {...events} onPointerDown={event => down(event, wall, opening.id, 'move')}
             onClick={event => { event.stopPropagation(); if (!selected && event.button === 0 && event.delta <= 4) onSelect({ wallId: wall.id, openingId: opening.id }); }}>
             <boxGeometry args={[opening.width, topView ? 0.2 : opening.height, wall.thickness + (topView ? 0.35 : 0.08)]} />
