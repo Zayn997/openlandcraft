@@ -11,6 +11,9 @@ import { appearanceUniforms, updateAppearanceUniforms } from './material-uniform
 import { riverMouth } from './river-mouth';
 import { useRiverWater } from './river-system';
 import { riverGeometry, riverPickGeometry, updateRiverProfile } from './river-geometry';
+import {InlandVolume,inlandUndersideGLSL} from './inland-volume';
+import {sampleRiverVolume} from './inland-sampling';
+import {coastSample,smooth} from './coast';
 
 const vertexShader = /* glsl */`
   ${oceanGroundGLSL}
@@ -36,6 +39,7 @@ const fragmentShader = /* glsl */`
   ${oceanGroundGLSL}
   ${oceanWaveGLSL}
   ${waterMaterialGLSL}
+  ${inlandUndersideGLSL}
   uniform float uTime,uRiverReach,uRiverLength;uniform vec2 uRiverGrid;
   uniform sampler2D uRiverHistory;
   uniform vec3 uColor,uOceanColor,uOceanAppearance;
@@ -58,6 +62,7 @@ const fragmentShader = /* glsl */`
     vec3 swell=normalize(vec3(-vOceanSlope.x,1.0,-vOceanSlope.y));
     vec3 normal=normalize(mix(vRiverNormal,swell,vMouth)+vec3(-micro.x,0.0,-micro.y)*smoothstep(0.01,0.18,depth));
     vec3 color=waterRadiance(vWorld,normal,depth,mix(uColor,uOceanColor,vMouth),clarity,roughness);
+    if(!gl_FrontFacing)color=inlandUnderside(vWorld,normal,depth,mix(uColor,uOceanColor,vMouth),clarity);
     vec2 historyUV=(vRiverUV*(uRiverGrid-1.0)+0.5)/uRiverGrid;
     float history=texture2D(uRiverHistory,historyUV).r;
     vec2 foamPoint=vec2(channel.x-uTime*0.8,channel.y);
@@ -169,8 +174,21 @@ export function RiverLayer({ river, project, selected, editor, quality, enabled,
   };
   return <group>
     <mesh ref={surface} geometry={geometry} raycast={pick} userData={{waterSurface:true}} renderOrder={2} onClick={(event) => { if (enabled && event.delta <= 4) { event.stopPropagation(); onSelect(river.id); } }}>
-      <shaderMaterial key={vertexShader+fragmentShader} ref={material} vertexShader={vertexShader} fragmentShader={fragmentShader} uniforms={uniforms} side={THREE.DoubleSide} transparent depthWrite />
+      <shaderMaterial key={vertexShader+fragmentShader} ref={material} vertexShader={vertexShader} fragmentShader={fragmentShader} uniforms={uniforms} side={THREE.DoubleSide} transparent depthWrite forceSinglePass />
     </mesh>
+    <InlandVolume geometry={geometry} vertex={vertexShader} uniforms={uniforms} liveUniforms={()=>material.current?.uniforms??uniforms} revision={engine}
+      discard="varying float vMouth;void clipVolume(){float bed=groundAt(vWorld.xz);if(vVolumeSurface-bed<0.008||vWorld.y<bed||vMouth>0.985)discard;}"
+      sample={p=>{
+        const water=sampleRiverVolume(engine.simulation.field,river,project.site,p.x,p.z,engine.simulation.clock);if(!water)return null;
+        const blend=mouth.enabled?smooth(mouth.start,mouth.end,water.along):0;if(blend>0.985)return null;
+        if(blend>0&&ocean?.kind==='ocean'&&coast){
+          const f=coast.simulation.field,c=Math.round((p.x/project.site.width+0.5)*(f.columns-1)),r=Math.round((p.z/project.site.depth+0.5)*(f.rows-1)),index=Math.max(0,Math.min(f.phase.length-1,r*f.columns+c));
+          const angle=ocean.direction*Math.PI/180,along=-p.x*Math.sin(angle)+p.z*Math.cos(angle);
+          const sea=coastSample(ocean,f.phase[index],f.packed[index*4+3],water.ground,coast.simulation.clock,along);
+          water.surface=water.surface*(1-blend)+(sea.height+0.02)*blend;
+        }
+        return water;
+      }}/>
     {selected && enabled && <group userData={{waterCaptureExclude:true}}>
       <lineSegments geometry={path} raycast={() => undefined}><lineBasicMaterial color="#d7f29c" depthTest={false} /></lineSegments>
       {river.points.map((point, index) => <mesh key={index} position={[point[0], point[1] + 0.15, point[2]]} renderOrder={15}

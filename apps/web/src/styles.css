@@ -19,3 +19,7 @@
 /* Architectural editing */
 .architecture-point{display:grid;grid-template-columns:16px 1fr 1fr 24px;gap:5px;align-items:center;margin:8px 0}.architecture-point>span{font-size:11px;color:var(--muted)}.architecture-point>button{min-height:28px}.architecture-opening{margin:12px 0;padding:10px;background:#2d352a;border:1px solid #495342;border-radius:6px}.architecture-opening summary{font-weight:600;margin-bottom:10px}.construction-inspector details>summary{cursor:pointer;padding:8px 0}.check-field{display:flex;align-items:center;gap:8px;font-size:12px;margin:12px 0}
 .architecture-properties{border:0;margin:0;padding:0;min-width:0}.architecture-properties:disabled{opacity:.6}.architecture-point>button{background:#3d4836;color:#e4ebd9;border-radius:4px}
+
+/* Keep viewport labels legible against the darker underwater scene. */
+.underwater-view .view-label,.underwater-view .view-label div span,.underwater-view .scene-caption,.underwater-view .scene-caption p,.underwater-view .north-marker{color:#eef6eb;text-shadow:0 1px 4px #092e2bcc}
+.underwater-view .view-label-icon{color:#485743;text-shadow:none}

@@ -1,5 +1,6 @@
 import { layerDisplayProject, objectLayerState, canEditObject } from '@openlandcraft/core';
 import {DragCopy, type CopyResult} from './drag-copy';
+import { TerrainClosure } from './terrain-solid';
 import {OutlineEdit, type OutlineEditProps} from './outline-edit';
 import { cameraFlight } from './camera-flight';
 import {WallEdit, type WallEditProps} from './wall-edit';
@@ -25,6 +26,10 @@ import { CoastSystem, CoastalTerrainMaterial } from './coast-system';
 import { WaterOptics } from './water-optics';
 import { RiverSystem } from './river-system';
 import { shoreCamera } from './shore-camera';
+import { underwaterCamera } from './underwater-camera';
+export { underwaterCamera } from './underwater-camera';
+import {inlandWaterCamera} from './inland-camera';
+export {inlandWaterCamera} from './inland-camera';
 import { intersectTerrain } from './terrain-picking';
 import { updateTerrainNormals } from './terrain-normals';
 import { BuildingLevel, ModelInstances, TransformGizmo, type TransformMode } from './objects';
@@ -45,7 +50,7 @@ type Props = {
   outlineEditing?: OutlineEditProps;
   openingEditing?: Omit<OpeningEditProps, 'walls'|'editor'|'snapping'|'topView'>;
   grid: boolean; playing: boolean; quality: 'low' | 'high';
-  view: 'perspective' | 'top' | 'shore'; frameToken: number; frameCancelToken: number;
+  view: 'perspective' | 'top' | 'shore' | 'underwater' | 'river-underwater' | 'lake-underwater'; frameToken: number; frameCancelToken: number;
   onMetrics: (metrics: ViewportMetrics) => void;
   editor: Editor; tool: 'select' | 'terrain' | 'building' | 'wall' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
   onStrokeTime: (milliseconds: number) => void;
@@ -193,10 +198,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
       <CoastalTerrainMaterial site={project.site} />
     </mesh>
     {ring && <lineLoop geometry={ring} raycast={() => undefined} renderOrder={10} userData={{waterCaptureExclude:true}}><lineBasicMaterial color={brush.kind === 'lower' ? '#e7b0a1' : '#e4ffb2'} depthTest={false} /></lineLoop>}
-    <mesh position={[0, -10.5, 0]} receiveShadow>
-      <boxGeometry args={[project.site.width, 3, project.site.depth]} />
-      <meshStandardMaterial color="#b2ab98" roughness={1} />
-    </mesh>
+    <TerrainClosure site={project.site}/>
   </group>;
 }
 
@@ -240,12 +242,12 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
     if (active.elapsed >= active.duration) stopFlight();
   }, -0.5);
   useFrame(() => {
-    if (view !== 'shore') return;
+    if (view !== 'shore' && !view.endsWith('underwater')) return;
     const ocean=project.entities.find((entity)=>entity.kind==='ocean' && entity.visible);
-    if (ocean?.kind !== 'ocean') return;
-    const floor=Math.max(ocean.level+ocean.amplitude*1.7+0.35,groundHeight(camera.position.x,camera.position.z,project.site)+0.4);
+    if (view==='shore'&&ocean?.kind !== 'ocean') return;
+    const floor=view==='shore'&&ocean?.kind==='ocean'?Math.max(ocean.level+ocean.amplitude*1.7+0.35,groundHeight(camera.position.x,camera.position.z,project.site)+0.4):groundHeight(camera.position.x,camera.position.z,project.site)+0.2;
     if(camera.position.y<floor){ camera.position.y=floor;const orbit=controls as unknown as {target:THREE.Vector3}|null;if(orbit)camera.lookAt(orbit.target); }
-  }, -0.25);
+  }, -0.4);
   useEffect(() => {
     const orbit = controls as unknown as Orbit | null;
     if (!orbit) return;
@@ -294,7 +296,14 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
     }
     const ocean = project.entities.find((entity) => entity.kind === 'ocean' && entity.visible);
     const destination = new THREE.Vector3();
-    if (view === 'shore' && ocean?.kind === 'ocean') {
+    if(view==='river-underwater'||view==='lake-underwater'){
+      const water=project.entities.find(e=>e.kind===(view==='river-underwater'?'river':'lake')&&e.visible);
+      const pose=water&&(water.kind==='river'||water.kind==='lake')?inlandWaterCamera(project.site,water):null;
+      if(pose){target.set(...pose.target);destination.set(...pose.position);}
+      else destination.copy(target).add(new THREE.Vector3(distance*.73,distance*.67,distance*.95));
+    } else if (view === 'underwater' && ocean?.kind === 'ocean') {
+      const pose=underwaterCamera(project.site,ocean,project.entities.filter(e=>e.kind==='lake'))??shoreCamera(project.site,ocean);target.set(...pose.target);destination.set(...pose.position);
+    } else if (view === 'shore' && ocean?.kind === 'ocean') {
       const pose=shoreCamera(project.site,ocean); target.set(...pose.target); destination.set(...pose.position);
     } else destination.copy(target).add(view === 'top' ? new THREE.Vector3(0, distance, 0.01) : new THREE.Vector3(distance * 0.73, distance * 0.67, distance * 0.95));
     stopFlight();
@@ -308,7 +317,7 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
     // Frame only on an explicit camera action; property changes preserve the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, controls, view, frameToken, project.site.width, project.site.depth]);
-  return <OrbitControls enabled={tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={6} maxDistance={800} maxPolarAngle={Math.PI * 0.48} enableRotate={view !== 'top'} mouseButtons={{ LEFT: view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
+  return <OrbitControls enabled={tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} maxPolarAngle={Math.PI * 0.95} enableRotate={view !== 'top'} mouseButtons={{ LEFT: view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
 }
 
 function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
@@ -366,13 +375,13 @@ export function Viewport(authored: Props) {
           {objectLayerState(authored.project,'terrain',authored.isolatedLayerId).visible&&<Terrain {...props} tool={props.tool==='terrain'&&!editable('terrain')?'select':props.tool}/>}
           {project.entities.filter(isRegion).map((region,order)=>region.visible&&<group key={region.id} userData={{copyEntityId:region.id}}><RegionLayer region={region} project={project} order={order} selected={region.id===props.selectedId} enabled={props.tool==='select'&&editable(region.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError}/></group>)}
           {props.tool==='region'&&<RegionDraft points={props.regionDraft} site={project.site}/>}
-          {project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={entity.id} ocean={entity} site={project.site} selected={entity.id === props.selectedId} quality={props.quality} />)}
+          {project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={entity.id} ocean={entity} site={project.site} selected={entity.id === props.selectedId} quality={props.quality} cutaway={props.view!=='shore'} />)}
           {props.view === 'shore' && project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={`${entity.id}-horizon`} ocean={entity} site={project.site} selected={false} quality={props.quality} horizon />)}
-          {props.project.entities.filter((entity) => entity.kind === 'river' && entity.visible).map((river) => river.kind === 'river' && <group key={river.id} userData={{copyEntityId:river.id}}><RiverLayer river={river} project={props.project} editor={props.editor} selected={river.id === props.selectedId} playing={props.playing} quality={props.quality} enabled={props.tool === 'select'&&editable(river.id)} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError} /></group>)}
+          {props.project.entities.filter((entity) => entity.kind === 'river' && entity.visible).map((river) => river.kind === 'river' && <group key={river.id} userData={{copyEntityId:river.id}}><RiverLayer river={river} project={props.project} editor={props.editor} selected={river.id === props.selectedId&&!props.view.endsWith('underwater')} playing={props.playing} quality={props.quality} enabled={props.tool === 'select'&&editable(river.id)} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError} /></group>)}
           {props.tool === 'river' && <RiverDraft points={props.riverDraft} />}
           {project.entities.map(entity => entity.kind === 'path' && entity.visible && <group key={entity.id} userData={{copyEntityId:entity.id}}><PathLayer path={entity} project={project} selected={entity.id === props.selectedId} enabled={props.tool === 'select'&&editable(entity.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} /></group>)}
           {props.tool === 'path' && <PathDraft points={props.pathDraft} site={project.site} />}
-          {project.entities.map(entity=>entity.kind==='lake'&&entity.visible&&<group key={entity.id} userData={{copyEntityId:entity.id}}><LakeLayer lake={entity} project={project} editor={props.editor} selected={entity.id===props.selectedId} enabled={props.tool==='select'&&editable(entity.id)} snapping={props.snapping} quality={props.quality} onSelect={props.onSelect} onError={props.onError}/></group>)}
+          {project.entities.map(entity=>entity.kind==='lake'&&entity.visible&&<group key={entity.id} userData={{copyEntityId:entity.id}}><LakeLayer lake={entity} project={project} editor={props.editor} selected={entity.id===props.selectedId&&!props.view.endsWith('underwater')} enabled={props.tool==='select'&&editable(entity.id)} snapping={props.snapping} quality={props.quality} onSelect={props.onSelect} onError={props.onError}/></group>)}
           {props.tool==='lake'&&<LakeDraft points={props.lakeDraft} level={props.lakeDraftLevel}/>}
           <group onPointerOver={() => setHovering(true)} onPointerOut={() => setHovering(false)}>
             {props.project.entities.filter((entity): entity is Block => entity.kind === 'block' && entity.visible).map((entity) => <Massing key={entity.id} blockOpeningEdit={(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} entity={entity} selected={selectedParts.includes(entity.id)||entity.id === props.selectedId} onSelect={(id) => { if (props.tool === 'select') props.onSelect(id); }} />)}

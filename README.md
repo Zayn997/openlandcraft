@@ -6,6 +6,10 @@ The first demonstration is a small site with sculpted hills, an editable winding
 
 ## Project status
 
+River and lake volumes/underwater viewing added October 20, 2026: select either type in **Water System** and choose **Dive into river** or **Dive into lake**. Their volumes follow the existing sloped channel or lake shoreline, with animated undersides, bed-aware depth tint and a **Return to 3D** action. Both work without an ocean; Ocean keeps its own controls and waves. **215 tests** and the production build pass. See [validation and limits](docs/INLAND_WATER_VOLUME_VALIDATION.md).
+
+Terrain closure and the first ocean volume/underwater pass added October 19, 2026: terrain sides follow the sculpted edge and connect to a closed bottom. Ocean cut faces meet the existing animated waves and seabed. **Dive** frames submerged water with a visible wave underside and depth tint; **3D** returns to editing and **Shore** retains the horizon. Existing projects need no migration. **211 tests** and the production build pass. See [validation and limits](docs/TERRAIN_WATER_VOLUME_VALIDATION.md).
+
 M7b direct floor/roof editing added October 18, 2026: single-click selects; double-click or Enter exposes corner and edge handles. Drag the surface to move the outline, add/remove corners, or enter precise coordinates. Gables remain pitched until explicitly converted. Invalid drags cancel and each valid drag is one undo step. **165 tests** and the production build pass. See [outline validation](docs/M7B_OUTLINE_EDIT_VALIDATION.md).
 
 M7b direct opening editing added October 18, 2026: in normal selection mode, click a door or window once to select it, then double-click to edit. Drag its body or square grips. No separate edit tool is required. Move and width resize work in plan and 3D; height has a 3D grip and precise fields. Invalid drops cancel, each drag is one undo action, and saved openings remain independent across floors. **150 tests** and the production build pass. See [editing validation](docs/M7B_OPENING_EDIT_VALIDATION.md).

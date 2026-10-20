@@ -69,6 +69,7 @@ import {
   createOcean,
   encodeGlb,
   evaluateProject,
+  layerDisplayProject,
   groundHeight,
   parseProject,
   snap,
@@ -88,6 +89,8 @@ import {
 } from "@openlandcraft/project";
 import {
   Viewport,
+  underwaterCamera,
+  inlandWaterCamera,
   validateModels,
   type TransformMode,
   type ViewportMetrics,
@@ -143,6 +146,15 @@ export function App() {
   const [editor] = useState(() => new Editor(createProject()));
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const project = state.preview ?? state.project;
+  const canDive=useMemo(()=>{
+    const displayed=layerDisplayProject(evaluateProject(project),state.isolatedLayerId);
+    const lakes=displayed.entities.filter(entity=>entity.kind==='lake');
+    return displayed.entities.some(entity=>entity.kind==='ocean'&&underwaterCamera(displayed.site,entity,lakes));
+  },[project,state.isolatedLayerId]);
+  const inlandDives=useMemo(()=>{
+    const displayed=layerDisplayProject(evaluateProject(project),state.isolatedLayerId);
+    return Object.fromEntries(displayed.entities.filter(e=>e.kind==='river'||e.kind==='lake').map(water=>[water.kind,!!inlandWaterCamera(displayed.site,water)]));
+  },[project,state.isolatedLayerId]);
   useEffect(() => {
     document.title = `OpenLandcraft — ${state.project.name}`;
   }, [state.project.name]);
@@ -173,7 +185,7 @@ export function App() {
   );
   const [quality, setQuality] = useState<"low" | "high">("high");
   const [waterPreview, setWaterPreview] = useState({ reset: 0, step: 0, riverReset:0, riverStep:0, lakeReset:0, lakeStep:0 });
-  const [view, setView] = useState<"perspective" | "top" | "shore">(
+  const [view, setView] = useState<"perspective" | "top" | "shore" | "underwater" | "river-underwater" | "lake-underwater">(
     "perspective",
   );
   const [frameToken, setFrameToken] = useState(0);
@@ -328,7 +340,7 @@ export function App() {
       setWaterOpen(water?.kind==="river"||water?.kind==="lake");
       if(water?.kind==="river"||water?.kind==="lake")setWaterType(water.kind);
       if (id === "terrain")
-        setView((current) => (current === "shore" ? "perspective" : current));
+        setView((current) => (current === "shore" || current.endsWith("underwater") ? "perspective" : current));
       setRiverDraft([]);
       setPathDraft([]);
       setLakeDraft([]);
@@ -407,7 +419,7 @@ export function App() {
   const chooseTool = (next: "select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region") => {
     setCopyDraft(null);setSelectedParts([]);setOpeningFocus(null);
     editor.cancel();
-    if (next !== "select" && view === "shore") setView("perspective");
+    if (next !== "select" && (view === "shore" || view.endsWith("underwater"))) setView("perspective");
     setTool(next);
     if(next==='opening-edit'){setOpeningStatus('Click a tinted door or window opening to edit it.');if(placementLevel)editor.select(placementLevel.id);setPanel('inspector');}
     if(next==='door'||next==='window'){setOpeningStatus('Point at a wall to place a '+next+'.');if(placementLevel)editor.select(placementLevel.id);setPanel('inspector');}
@@ -1118,7 +1130,7 @@ export function App() {
               Live scene
             </span>
           </div>
-          <div className="viewport-area">
+          <div className={`viewport-area${view.endsWith('underwater')?' underwater-view':''}`}>
             <Viewport
               onCopyStatus={setNotice}
               onCopyPlaced={result=>{select(result.selectedIds[0]);if(result.focus)setOpeningFocus(result.focus);else if(result.selectedIds.length>1)setSelectedParts(result.selectedIds);}}
@@ -1179,7 +1191,7 @@ export function App() {
                     ? "Perspective"
                     : view === "shore"
                       ? "Shore view"
-                      : "Top view"}
+                      : view === "underwater" ? "Ocean underwater" : view==='river-underwater'?'River underwater':view==='lake-underwater'?'Lake underwater':"Top view"}
                 </strong>
                 <span>
                   {view === "shore"
@@ -1217,6 +1229,11 @@ export function App() {
                 }}
               >
                 Shore
+              </button>
+              <button aria-pressed={view === 'underwater'} className={view === 'underwater' ? 'chosen' : ''}
+                disabled={!canDive}
+                onClick={()=>{chooseTool('select');setView('underwater');}} title="View beneath the ocean surface">
+                Dive
               </button>
             </div>
             <div className="viewport-tools">
@@ -1640,7 +1657,8 @@ export function App() {
           ) : selected&&isRegion(selected) ? (
             <RegionInspector key={selected.id+"-"+state.revision+"-"+inspectorEpoch} region={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping}/>
           ) : waterOpen && (!selected||selected.kind==="river"||selected.kind==="lake") ? (
-            <WaterSystem type={waterType} onType={openWaterSystem} onDraw={()=>{chooseTool(waterType);setView("top");}} onAdd={()=>waterType==="river"?addRiver():addLake()} drawing={tool==="river"||tool==="lake"} existing={project.entities.find(e=>e.kind===waterType)} onSelectExisting={select}>
+            <WaterSystem type={waterType} onType={openWaterSystem} onDraw={()=>{chooseTool(waterType);setView("top");}} onAdd={()=>waterType==="river"?addRiver():addLake()} drawing={tool==="river"||tool==="lake"} existing={project.entities.find(e=>e.kind===waterType)} onSelectExisting={select}
+              canDive={!!inlandDives[waterType]} diving={view===`${waterType}-underwater`} onDive={()=>{chooseTool('select');setView(`${waterType}-underwater`);setFrameToken(v=>v+1);}} onExitDive={()=>setView('perspective')}>
               {selected?.kind==="river"?<RiverInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} river={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,riverReset:v.riverReset+1}))} onStep={()=>setWaterPreview(v=>({...v,riverStep:v.riverStep+1}))}/>:selected?.kind==="lake"?<LakeInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>:undefined}
             </WaterSystem>
           ) : selected?.kind === "lake" ? (

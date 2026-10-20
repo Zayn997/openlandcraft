@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { coastalSkyGLSL } from './coast-appearance';
 import { opticsSize } from './optics-budget';
 
-type Optics = { target: THREE.WebGLRenderTarget; sky: THREE.CubeTexture };
+type Optics = { target: THREE.WebGLRenderTarget; sky: THREE.CubeTexture; inlandUnderwater:boolean };
 const Context = createContext<Optics | null>(null);
 export const useWaterOptics = () => useContext(Context);
 
@@ -17,7 +17,7 @@ export function WaterOptics({ enabled, immersive, quality, children }: { enabled
     const target = new THREE.WebGLRenderTarget(1, 1, { type, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true });
     target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
     target.depthTexture.minFilter = target.depthTexture.magFilter = THREE.NearestFilter;
-    return { target, sky: cube.texture, cube };
+    return { target, sky: cube.texture, cube, inlandUnderwater:false };
   }, [gl]);
   useLayoutEffect(() => {
     // GPU work belongs to the committed lifecycle, including React StrictMode's replay.
@@ -49,6 +49,7 @@ export function WaterOptics({ enabled, immersive, quality, children }: { enabled
     resources.target.setSize(...opticsSize(size.width,size.height,gl.getPixelRatio(),quality));
   }, [resources, gl, size.width, size.height, quality]);
   useFrame(() => {
+    resources.inlandUnderwater=false;
     if (!enabled) return;
     const hidden: THREE.Object3D[] = [];
     scene.traverse((object) => { if (object.visible && (object.userData.waterSurface || object.userData.waterCaptureExclude)) { hidden.push(object); object.visible = false; } });
