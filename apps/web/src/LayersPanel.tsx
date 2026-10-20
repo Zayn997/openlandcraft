@@ -1,3 +1,4 @@
+import { ColorInput, Field, Panel, Row, SelectInput, SelectOption, TextInput, TreeRow } from './ui';
 import { useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Crosshair, Eye, EyeOff, FolderPlus, LockKeyhole, Plus, ScanEye, Search, Settings2, Trash2, UnlockKeyhole } from 'lucide-react';
 import { canEditObject, layerState, objectLayer, type Command, type Editor, type Layer, type Project } from '@openlandcraft/core';
@@ -46,14 +47,14 @@ export function LayersPanel({ project, editor, selectedIds, isolatedId, guard, o
   visit(null, 0);
   const active = project.layers.find(l => l.id === project.activeLayerId);
   const canMove = selectedIds.length > 0 && selectedIds.every(id => canEditObject(project, id, isolatedId));
-  return <section className="layers-panel" aria-label="Layers">
-    <div className="organizer-search"><Search size={14}/><input aria-label="Search layers" placeholder="Search layers…" value={query} onChange={e => setQuery(e.target.value)}/><select aria-label="Filter layers" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All</option><option value="used">Used</option><option value="hidden">Hidden</option><option value="locked">Locked</option></select></div>
-    <div className="layer-toolbar"><button title="New layer" aria-label="New layer" onClick={() => add(null)}><Plus size={15}/></button><button title="New sublayer" aria-label="New sublayer" onClick={() => add(layer.id)}><FolderPlus size={15}/></button><button title="Reveal selected object's layer" aria-label="Reveal selected object's layer" disabled={!selectedIds.length} onClick={reveal}><Crosshair size={15}/></button><span>{project.layers.length} layers</span><button title="Layer settings" aria-label="Layer settings" aria-pressed={settings} onClick={() => setSettings(!settings)}><Settings2 size={15}/></button></div>
-    {isolatedId && <div className="layer-isolation"><ScanEye size={14}/><span>Layer isolated</span><button onClick={() => editor.isolateLayer(null)}>Restore</button></div>}
+  return <Panel className="layers-panel" aria-label="Layers">
+    <Row className="organizer-search"><Search size={14}/><TextInput appearance="plain" aria-label="Search layers" placeholder="Search layers…" value={query} onChange={e => setQuery(e.target.value)}/><SelectInput appearance="plain" aria-label="Filter layers" value={filter} onValueChange={(value) => setFilter(value)}><SelectOption value="all">All</SelectOption><SelectOption value="used">Used</SelectOption><SelectOption value="hidden">Hidden</SelectOption><SelectOption value="locked">Locked</SelectOption></SelectInput></Row>
+    <Row className="layer-toolbar"><button title="New layer" aria-label="New layer" onClick={() => add(null)}><Plus size={15}/></button><button title="New sublayer" aria-label="New sublayer" onClick={() => add(layer.id)}><FolderPlus size={15}/></button><button title="Reveal selected object's layer" aria-label="Reveal selected object's layer" disabled={!selectedIds.length} onClick={reveal}><Crosshair size={15}/></button><span>{project.layers.length} layers</span><button title="Layer settings" aria-label="Layer settings" aria-pressed={settings} onClick={() => setSettings(!settings)}><Settings2 size={15}/></button></Row>
+    {isolatedId && <Row className="layer-isolation"><ScanEye size={14}/><span>Layer isolated</span><button onClick={() => editor.isolateLayer(null)}>Restore</button></Row>}
     <div className="layer-tree organizer-scroll" role="tree" aria-label="Layer hierarchy" ref={tree}>
       {rows.map(({ item, depth }, index) => {
         const status = layerState(project, item.id), nested = children(item.id).length > 0, open = searching || expanded.has(item.id);
-        return <div key={item.id} data-layer-id={item.id} role="treeitem" aria-level={depth + 1} aria-selected={item.id === layer.id} aria-expanded={nested ? open : undefined} tabIndex={item.id === layer.id || index === 0 && !rows.some(r => r.item.id === layer.id) ? 0 : -1} className={`layer-row ${item.id === layer.id ? 'chosen' : ''} ${!status.visible ? 'layer-muted' : ''}`} style={{ paddingLeft: 6 + depth * 14 }} onClick={() => setPicked(item.id)} onContextMenu={e => { e.preventDefault(); setPicked(item.id); setSettings(true); }} onKeyDown={e => {
+        return <TreeRow key={item.id} data-layer-id={item.id} role="treeitem" aria-level={depth + 1} aria-selected={item.id === layer.id} aria-expanded={nested ? open : undefined} tabIndex={item.id === layer.id || index === 0 && !rows.some(r => r.item.id === layer.id) ? 0 : -1} className="layer-row" depth={depth} selected={item.id === layer.id} muted={!status.visible} onClick={() => setPicked(item.id)} onContextMenu={e => { e.preventDefault(); setPicked(item.id); setSettings(true); }} onKeyDown={e => {
           if(e.target !== e.currentTarget)return;
           if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?rows.length-1:Math.max(0,Math.min(rows.length-1,index+(e.key==='ArrowDown'?1:-1)));setPicked(rows[next].item.id);tree.current?.querySelectorAll<HTMLElement>('[role="treeitem"]')[next]?.focus();}
           if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();toggle(item.id,e.key==='ArrowRight');}
@@ -65,14 +66,14 @@ export function LayersPanel({ project, editor, selectedIds, isolatedId, guard, o
           <button className="layer-current" title={active?.id === item.id ? 'Active layer: new objects go here' : 'Make active layer'} aria-label={`Make ${item.name} active`} aria-pressed={active?.id === item.id} disabled={!status.visible || status.locked} onClick={e => { e.stopPropagation(); execute({ type: 'activeLayer', id: item.id }, 'Set active layer'); }}>{active?.id === item.id ? <Check size={13}/> : <span className="current-dot"/>}</button>
           <button title={!item.visible ? 'Hidden' : !status.visible ? 'Hidden by parent layer' : 'Visible'} aria-label={`${item.visible ? 'Hide' : 'Show'} layer ${item.name}`} onClick={e => { e.stopPropagation(); update({ ...item, visible: !item.visible }); }}>{status.visible ? <Eye size={14}/> : <EyeOff size={14}/>}</button>
           <button title={!item.locked && status.locked ? 'Locked by parent layer' : status.locked ? 'Locked' : 'Unlocked'} aria-label={`${item.locked ? 'Unlock' : 'Lock'} layer ${item.name}`} onClick={e => { e.stopPropagation(); update({ ...item, locked: !item.locked }); }}>{status.locked ? <LockKeyhole size={13}/> : <UnlockKeyhole size={13}/>}</button>
-        </div>;
+        </TreeRow>;
       })}
       {!rows.length && <p className="organizer-empty">No matching layers.</p>}
     </div>
     {settings && <LayerSettings key={layer.id + JSON.stringify(layer)} layer={layer} project={project} onSave={update} onDelete={() => execute({type:'removeLayer',id:layer.id},'Delete empty layer')}/>}
     <div className="layer-actions"><button disabled={!canMove || !layerState(project, layer.id).visible || layerState(project, layer.id).locked} onClick={() => execute({ type:'assignLayer',ids:selectedIds,layerId:layer.id }, 'Move selection to ' + layer.name)}>Move selection here{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}</button><div><button onClick={() => editor.isolateLayer(isolatedId === layer.id ? null : layer.id)}>{isolatedId === layer.id ? 'Restore view' : 'Isolate'}</button><button onClick={() => onSelectObjects(ids.filter(id => objectLayer(project, id) === layer.id && canEditObject(project, id, isolatedId)))}>Select objects</button></div></div>
-    <div className="layer-active-status"><span className="layer-swatch" style={{background:active?.color}}/><span>Drawing on <strong>{active?.name ?? 'no active layer'}</strong></span></div>
-  </section>;
+    <Row className="layer-active-status"><span className="layer-swatch" style={{background:active?.color}}/><span>Drawing on <strong>{active?.name ?? 'no active layer'}</strong></span></Row>
+  </Panel>;
 }
 
 function LayerSettings({layer,project,onSave,onDelete}:{layer:Layer;project:Project;onSave:(layer:Layer)=>void;onDelete:()=>void}) {
@@ -80,8 +81,8 @@ function LayerSettings({layer,project,onSave,onDelete}:{layer:Layer;project:Proj
   const descendants=(id:string):boolean=>id===layer.id||!!project.layers.find(l=>l.id===id)?.parentId&&descendants(project.layers.find(l=>l.id===id)!.parentId!);
   const occupied=['terrain',...project.entities.map(e=>e.id)].some(id=>objectLayer(project,id)===layer.id)||project.layers.some(l=>l.parentId===layer.id);
   return <form className="layer-settings" aria-label="Layer settings" onSubmit={e=>{e.preventDefault();onSave({...layer,name});}}>
-    <label>Name<div><input aria-label="Layer name" value={name} maxLength={80} onChange={e=>setName(e.target.value)}/><button type="submit" aria-label="Save layer name"><Check size={14}/></button></div></label>
-    <label>Parent<select aria-label="Parent layer" value={layer.parentId??''} disabled={layer.id==='default'} onChange={e=>onSave({...layer,parentId:e.target.value||null})}><option value="">None</option>{project.layers.filter(l=>!descendants(l.id)).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
-    <div className="layer-settings-bottom"><label>Color<input aria-label="Layer color" type="color" value={layer.color} onChange={e=>onSave({...layer,color:e.target.value})}/></label><button type="button" disabled={layer.id==='default'||occupied} title={occupied?'Move objects and sublayers first':'Delete empty layer'} aria-label="Delete empty layer" onClick={onDelete}><Trash2 size={14}/></button></div>
+    <Field>Name<Row><TextInput aria-label="Layer name" value={name} maxLength={80} onChange={e=>setName(e.target.value)}/><button type="submit" aria-label="Save layer name"><Check size={14}/></button></Row></Field>
+    <Field>Parent<SelectInput aria-label="Parent layer" value={layer.parentId===null?'none':`layer:${layer.parentId}`} disabled={layer.id==='default'} onValueChange={(value) =>onSave({...layer,parentId:value==='none'?null:value.slice(6)})}><SelectOption value="none">None</SelectOption>{project.layers.filter(l=>!descendants(l.id)).map(l=><SelectOption key={l.id} value={`layer:${l.id}`}>{l.name}</SelectOption>)}</SelectInput></Field>
+    <Row justify="between" className="layer-settings-bottom"><Field>Color<ColorInput aria-label="Layer color" value={layer.color} onChange={e=>onSave({...layer,color:e.target.value})}/></Field><button type="button" disabled={layer.id==='default'||occupied} title={occupied?'Move objects and sublayers first':'Delete empty layer'} aria-label="Delete empty layer" onClick={onDelete}><Trash2 size={14}/></button></Row>
   </form>;
 }

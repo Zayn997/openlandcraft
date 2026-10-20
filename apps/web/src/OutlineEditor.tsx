@@ -1,7 +1,8 @@
+import { Button, PanelHeading, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumericInput, Panel, Row, SelectInput, SelectOption, TextInput } from './ui';
 import { useEffect, useState } from 'react';
+import { InspectorSection } from './InspectorSection';
 import { applyCommand, dragOutline, flatRoofOutline, footprint, insertOutlineCorner, removeOutlineCorner, unitForPart, type Editor, type Level, type OutlinePart } from '@openlandcraft/core';
 import type { OutlineHandle } from '../../../packages/viewport/src/outline-edit';
-import './openings.css';
 export function OutlineEditor({ part, level, editing, editor, handle, onHandle, snapping, onSnapping, onFrame, onFinish, onSelect, status, onStatus }: {
   part:OutlinePart;level?:Level;editing:boolean;editor:Editor;handle:OutlineHandle;onHandle:(handle:OutlineHandle)=>void;snapping:boolean;onSnapping:(value:boolean)=>void;onFrame:()=>void;onFinish:()=>void;onSelect:(id:string)=>void;status:string;onStatus:(message:string)=>void;
 }) {
@@ -22,33 +23,33 @@ export function OutlineEditor({ part, level, editing, editor, handle, onHandle, 
   const [values,setValues]=useState(()=>valueOf(part));useEffect(()=>setValues(valueOf(part)),[part]);
   const profile=():OutlinePart=>({...part,name:values.name,color:values.color,center:[number(values.centerX),number(values.centerZ)],width:number(values.width),depth:number(values.depth),elevation:number(values.elevation),...(part.kind==='slab'?{thickness:number(values.thickness)}:{rise:number(values.thickness)})});
   let profileIssue='';if(editing&&!busy)try{applyCommand(state.project,{type:'replace',entity:profile()});}catch(error){profileIssue=error instanceof Error?error.message:'Invalid dimensions.';}
-  return <section className="opening-tools" aria-label={editing?'Edit '+title.toLowerCase()+' outline':'Selected '+title.toLowerCase()}>
-    <div className="opening-tool-heading"><span>{editing?'EDIT OUTLINE':'SELECTED ELEMENT'}</span><h2>{editing?'Editing '+title.toLowerCase()+' outline':title+' selected'}</h2></div>
-    <p className="field-hint">{part.name} · {level?.name}</p>
+  return <Panel padding="body" className="opening-tools" aria-label={editing?'Edit '+title.toLowerCase()+' outline':'Selected '+title.toLowerCase()}>
+    <PanelHeading title={<>{editing?'Editing '+title.toLowerCase()+' outline':title+' selected'}</>} subtitle={<>{editing?'EDIT OUTLINE':'SELECTED ELEMENT'}</>} />
+    <FieldMessage>{part.name} · {level?.name}</FieldMessage>
     <p className="opening-feedback" role="status">{editing?status:'Double-click to edit the outline. You can also press Enter.'}</p>
-    <p className="field-hint">{gable?'Pitched gable · rectangular footprint':points.length+' corners · '+(part.kind==='slab'?'floor slab':'flat roof')}</p>
-    <button className="text-button" onClick={onFrame}>Frame selected outline · F</button>
+    <FieldMessage>{gable?'Pitched gable · rectangular footprint':points.length+' corners · '+(part.kind==='slab'?'floor slab':'flat roof')}</FieldMessage>
+    <Button variant="ghost" className="text-button" onClick={onFrame}>Frame selected outline · F</Button>
     {editing&&<>
-      <p className="field-hint">Drag round corners or square edge handles. Drag the surface to move the whole outline. {part.kind==='slab'?'Walls and roofs are hidden while editing this floor.':'Only this floor is shown.'} Walls and other floors keep their geometry.</p>
-      {gable&&<p className="field-hint">Corner and edge drags keep the roof rectangular and pitched. Convert explicitly for a custom flat outline.</p>}
-      <label className="check-field"><input type="checkbox" checked={snapping} disabled={busy} onChange={e=>onSnapping(e.target.checked)}/>Snap outline edits to 0.25 m</label>
-      <label className="name-field">Selected handle<select aria-label="Outline handle" disabled={busy} value={handle.mode+'-'+index} onChange={e=>{const [mode,i]=e.target.value.split('-');onHandle({mode:mode as OutlineHandle['mode'],index:Number(i)});}}>{points.flatMap((_,i)=>[<option key={'v'+i} value={'vertex-'+i}>Corner {i+1}</option>,<option key={'e'+i} value={'edge-'+i}>Edge {i+1} → {(i+1)%points.length+1}</option>])}</select></label>
+      <FieldMessage>Drag round corners or square edge handles. Drag the surface to move the whole outline. {part.kind==='slab'?'Walls and roofs are hidden while editing this floor.':'Only this floor is shown.'} Walls and other floors keep their geometry.</FieldMessage>
+      {gable&&<FieldMessage>Corner and edge drags keep the roof rectangular and pitched. Convert explicitly for a custom flat outline.</FieldMessage>}
+      <Field variant="checkbox"><CheckboxInput checked={snapping} disabled={busy} onChange={e=>onSnapping(e.target.checked)}/>Snap outline edits to 0.25 m</Field>
+      <Field>Selected handle<SelectInput aria-label="Outline handle" disabled={busy} value={handle.mode+'-'+index} onValueChange={(value) =>{const [mode,i]=value.split('-');onHandle({mode:mode as OutlineHandle['mode'],index:Number(i)});}}>{points.flatMap((_,i)=>[<SelectOption key={'v'+i} value={'vertex-'+i}>Corner {i+1}</SelectOption>,<SelectOption key={'e'+i} value={'edge-'+i}>Edge {i+1} → {(i+1)%points.length+1}</SelectOption>])}</SelectInput></Field>
       <form onSubmit={e=>{e.preventDefault();if(candidate&&!issue&&changed)commit(()=>candidate!,'Edit outline handle');}}><fieldset className="opening-edit-fields" disabled={busy}>
-        <div className="construction-fields">{handle.mode==='vertex'?<><label className="number-field"><span>Corner X</span><input aria-label="Outline corner X" type="number" step="any" value={x} onChange={e=>setX(e.target.value)}/></label><label className="number-field"><span>Corner Z</span><input aria-label="Outline corner Z" type="number" step="any" value={z} onChange={e=>setZ(e.target.value)}/></label></>:<label className="number-field"><span>Edge offset · m</span><input aria-label="Outline edge offset" type="number" step="any" value={offset} onChange={e=>setOffset(e.target.value)}/></label>}</div>
-        {issue&&<p role="alert" className="field-hint">{issue}</p>}<button className="primary-button" disabled={!changed||!!issue}>Apply handle position</button>
+        <FieldGrid columns={2}>{handle.mode==='vertex'?<><Field variant="number"><span>Corner X</span><NumericInput aria-label="Outline corner X" step="any" value={x} onChange={e=>setX(e.target.value)}/></Field><Field variant="number"><span>Corner Z</span><NumericInput aria-label="Outline corner Z" step="any" value={z} onChange={e=>setZ(e.target.value)}/></Field></>:<Field variant="number"><span>Edge offset · m</span><NumericInput aria-label="Outline edge offset" step="any" value={offset} onChange={e=>setOffset(e.target.value)}/></Field>}</FieldGrid>
+        {issue&&<FieldMessage tone="error" role="alert">{issue}</FieldMessage>}<Button variant="default" className="primary-button" disabled={!changed||!!issue}>Apply handle position</Button>
       </fieldset></form>
-      {!gable&&<div className="part-buttons"><button disabled={busy||points.length>=16} onClick={()=>commit(()=>insertOutlineCorner(part,index),'Add outline corner')}>Add corner after {index+1}</button><button disabled={busy||handle.mode!=='vertex'||points.length<=3} onClick={()=>{commit(()=>removeOutlineCorner(part,index),'Remove outline corner');onHandle({mode:'vertex',index:0});}}>Remove corner {index+1}</button></div>}
-      {gable&&<button className="text-button" disabled={busy} onClick={()=>commit(()=>flatRoofOutline(part),'Convert to flat roof')}>Convert to flat outline · 0.20 m thick</button>}
-      <details><summary>Dimensions and appearance</summary><form onSubmit={e=>{e.preventDefault();if(!profileIssue)commit(profile,'Edit outline properties');}}><fieldset className="opening-edit-fields" disabled={busy}>
-        <label className="name-field">Name<input aria-label="Outline name" value={values.name} required maxLength={80} onChange={e=>setValues(v=>({...v,name:e.target.value}))}/></label>
-        <div className="construction-fields">{(['centerX','centerZ',...(!part.outline?['width','depth']:[]),'elevation','thickness'] as const).map(key=><label className="number-field" key={key}><span>{key==='thickness'?(gable?'Roof rise':'Thickness'):key}</span><input aria-label={'Outline '+key} type="number" step="any" value={values[key as keyof typeof values]} onChange={e=>setValues(v=>({...v,[key]:e.target.value}))}/></label>)}</div>
-        <label className="color-field"><input aria-label="Outline color" type="color" value={values.color} onChange={e=>setValues(v=>({...v,color:e.target.value}))}/><span>Color</span></label>
-        {profileIssue&&<p role="alert" className="field-hint">{profileIssue}</p>}<button className="primary-button" disabled={!!profileIssue||JSON.stringify(values)===JSON.stringify(valueOf(part))}>Apply outline properties</button>
-      </fieldset></form></details>
-      {part.outline&&<button className="text-button" disabled={busy} onClick={()=>commit(()=>({...part,outline:undefined}),'Restore rectangular '+title.toLowerCase())}>Restore {part.kind==='roof'?'gable':'rectangle'} · {part.width} × {part.depth} m{part.kind==='roof'?' · '+part.rise+' m rise':''}</button>}
-      <button className="text-button" disabled={busy} onClick={()=>{try{editor.execute({type:'remove',id:part.id},'Delete '+title.toLowerCase());onFinish();}catch(error){onStatus(error instanceof Error?error.message:'Cannot delete element.');}}}>Delete {title.toLowerCase()}</button>
-      <button className="primary-button" onClick={onFinish}>Finish editing <span>Esc</span></button>
+      {!gable&&<Row className="part-buttons"><button disabled={busy||points.length>=16} onClick={()=>commit(()=>insertOutlineCorner(part,index),'Add outline corner')}>Add corner after {index+1}</button><button disabled={busy||handle.mode!=='vertex'||points.length<=3} onClick={()=>{commit(()=>removeOutlineCorner(part,index),'Remove outline corner');onHandle({mode:'vertex',index:0});}}>Remove corner {index+1}</button></Row>}
+      {gable&&<Button variant="ghost" className="text-button" disabled={busy} onClick={()=>commit(()=>flatRoofOutline(part),'Convert to flat roof')}>Convert to flat outline · 0.20 m thick</Button>}
+      <InspectorSection sectionId="outline-dimensions" title="Dimensions & appearance" defaultOpen={false}><form onSubmit={e=>{e.preventDefault();if(!profileIssue)commit(profile,'Edit outline properties');}}><fieldset className="opening-edit-fields" disabled={busy}>
+        <Field>Name<TextInput aria-label="Outline name" value={values.name} required maxLength={80} onChange={e=>setValues(v=>({...v,name:e.target.value}))}/></Field>
+        <FieldGrid columns={2}>{(['centerX','centerZ',...(!part.outline?['width','depth']:[]),'elevation','thickness'] as const).map(key=><Field variant="number" key={key}><span>{key==='thickness'?(gable?'Roof rise':'Thickness'):key}</span><NumericInput aria-label={'Outline '+key} step="any" value={values[key as keyof typeof values]} onChange={e=>setValues(v=>({...v,[key]:e.target.value}))}/></Field>)}</FieldGrid>
+        <Field variant="color"><ColorInput aria-label="Outline color" value={values.color} onChange={e=>setValues(v=>({...v,color:e.target.value}))}/><span>Color</span></Field>
+        {profileIssue&&<FieldMessage tone="error" role="alert">{profileIssue}</FieldMessage>}<Button variant="default" className="primary-button" disabled={!!profileIssue||JSON.stringify(values)===JSON.stringify(valueOf(part))}>Apply outline properties</Button>
+      </fieldset></form></InspectorSection>
+      {part.outline&&<Button variant="ghost" className="text-button" disabled={busy} onClick={()=>commit(()=>({...part,outline:undefined}),'Restore rectangular '+title.toLowerCase())}>Restore {part.kind==='roof'?'gable':'rectangle'} · {part.width} × {part.depth} m{part.kind==='roof'?' · '+part.rise+' m rise':''}</Button>}
+      <Button variant="ghost" className="text-button" disabled={busy} onClick={()=>{try{editor.execute({type:'remove',id:part.id},'Delete '+title.toLowerCase());onFinish();}catch(error){onStatus(error instanceof Error?error.message:'Cannot delete element.');}}}>Delete {title.toLowerCase()}</Button>
+      <Button variant="default" className="primary-button" onClick={onFinish}>Finish editing <span>Esc</span></Button>
     </>}
-    {level&&<button className="text-button" onClick={()=>onSelect(level.id)}>Select whole floor · {level.name}</button>}{unit&&<button className="text-button" onClick={()=>onSelect(unit.id)}>Select whole unit · {unit.name}</button>}
-  </section>;
+    {level&&<Button variant="ghost" className="text-button" onClick={()=>onSelect(level.id)}>Select whole floor · {level.name}</Button>}{unit&&<Button variant="ghost" className="text-button" onClick={()=>onSelect(unit.id)}>Select whole unit · {unit.name}</Button>}
+  </Panel>;
 }

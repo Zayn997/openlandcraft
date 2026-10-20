@@ -1,0 +1,26 @@
+/* Dock positioning only. Controls and section styling live with their components. */
+@media (min-width:1001px) {
+ .workspace { grid-template-columns:auto minmax(0,1fr) 300px; }
+ .workspace:has(> .inspector-collapsed) { grid-template-columns:auto minmax(0,1fr) 40px; }
+}
+.inspector-dock { display:flex; min-width:0; overflow:hidden; background:var(--surface); }
+.inspector-expanded { display:flex; flex:1; min-width:0; min-height:0; flex-direction:column; }
+.inspector-preview-dot { width:5px; height:5px; border-radius:50%; background:var(--accent); }
+.inspector-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; scrollbar-color:#54604e transparent; }
+.inspector-rail { display:none; align-items:center; flex-direction:column; width:39px; padding-top:8px; gap:16px; color:var(--muted); }
+.inspector-rail span { writing-mode:vertical-rl; font-size:11px; letter-spacing:.4px; }
+.inspector-collapsed .inspector-rail { display:flex; }
+.inspector-collapsed .inspector-expanded { display:none; }
+@media (max-width:1000px) {
+ .inspector-dock { display:none; }
+ .inspector-dock.mobile-active { display:flex; }
+ .inspector-dock .inspector-rail, .inspector-dock .inspector-collapse-button { display:none; }
+ .inspector-dock .inspector-expanded { display:flex; }
+}
+@media (min-width:521px) and (max-width:1000px) {
+ .workspace:has(> .inspector-dock.mobile-active) { grid-template-columns:minmax(0,1fr) 290px; }
+}
+@media (max-width:520px) {
+ .workspace:has(> .inspector-dock.mobile-active) { grid-template-rows:minmax(0,1fr) min(45dvh,440px); }
+}
+@media (max-height:600px) and (min-width:521px) { .app:has(.inspector-dock) { min-height:0; } }

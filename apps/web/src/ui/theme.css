@@ -1,0 +1,55 @@
+/* One editor theme, shared by Tailwind utilities and the remaining legacy CSS. */
+@theme {
+  --spacing: 4px;
+  --font-sans: 'DM Sans', sans-serif;
+  --font-heading: 'Manrope', sans-serif;
+  --color-surface: #202722;
+  --color-raised: #29312a;
+  --color-input: #2d362e;
+  --color-line: #384138;
+  --color-ink: #e5e9e1;
+  --color-muted: #a1ada1;
+  --color-accent: #d1e6a2;
+  --color-accent-ink: #263321;
+  --color-danger: #f2b1a7;
+  --color-hover: #ffffff08;
+  --color-selected: #d1e6a217;
+  --color-selected-hover: #d1e6a220;
+  --color-subtle: #d1e6a207;
+  --text-caption: 10px;
+  --text-label: 11px;
+  --text-ui: 12px;
+  --text-title: 14px;
+  --radius-control: 4px;
+}
+
+@theme inline {
+  --spacing-control: var(--ui-control-height);
+  --spacing-panel: var(--ui-panel-gutter);
+  --text-control: var(--ui-control-text);
+}
+
+@custom-variant compact (@media (max-width: 760px));
+@custom-variant phone (@media (max-width: 520px));
+@custom-variant short-screen (@media (max-height: 600px) and (min-width: 521px));
+
+@layer base {
+  :root {
+    --surface: var(--color-surface);
+    --surface-raised: var(--color-raised);
+    --surface-input: var(--color-input);
+    --line: var(--color-line);
+    --text: var(--color-ink);
+    --muted: var(--color-muted);
+    --accent: var(--color-accent);
+    --accent-ink: var(--color-accent-ink);
+    --danger: var(--color-danger);
+    --ui-control-height: 34px;
+    --ui-control-text: 12px;
+    --ui-panel-gutter: 14px;
+    --ui-toolbar-ink: #536348;
+    --ui-toolbar-hover: #53634812;
+  }
+  @media (max-width: 760px) { :root { --ui-panel-gutter: 16px; } }
+  @media (max-width: 520px) { :root { --ui-control-height: 40px; --ui-control-text: 16px; } }
+}

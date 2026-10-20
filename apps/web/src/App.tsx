@@ -1,3 +1,7 @@
+import { CreationMenu } from './CreationMenu';
+import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, NumericInput, Panel, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, SelectInput, SelectOption, TextInput } from './ui';
+import { InspectorSection } from './InspectorSection';
+import { InspectorPanel } from './InspectorPanel';
 import { canEditObject, objectLayer } from '@openlandcraft/core';
 import { LayersPanel } from './LayersPanel';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
@@ -139,7 +143,6 @@ function IconButton({
   );
 }
 
-import { NumberField } from "./NumberField";
 import { ConstructionInspector } from "./ConstructionInspector";
 
 export function App() {
@@ -696,17 +699,20 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (opening || importingModel || event.defaultPrevented || event.isComposing) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], [aria-haspopup="menu"][aria-expanded="true"]')) return;
       if (event.key === "Escape") {
         cancelPreview();
         setShowHelp(false);
         return;
       }
-      const target = event.target instanceof HTMLElement ? event.target : null;
       if (projectDialog || showHelp || target?.isContentEditable || target?.closest("input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])"))
         return;
       const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
       const key = event.key.toLowerCase();
       if(target?.closest('.layers-panel')&&!shortcut)return;
+      // Inspector disclosures and action buttons own their keyboard activation.
+      if(target?.closest('#inspector button, #inspector summary')&&!shortcut)return;
       if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         if (event.repeat || !['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
@@ -741,7 +747,7 @@ export function App() {
     };
     const onClipboard = (event: ClipboardEvent) => {
       const target = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      if (opening || importingModel || projectDialog || showHelp || event.defaultPrevented || target?.isContentEditable || target?.closest('.layers-panel, input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])')) return;
+      if (opening || importingModel || projectDialog || showHelp || event.defaultPrevented || target?.isContentEditable || target?.closest('[role=menu], [role=listbox], [role=combobox], .layers-panel, input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])')) return;
       if (event.type === 'copy' && window.getSelection()?.toString()) return;
       event.preventDefault();
       if (!['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
@@ -952,7 +958,7 @@ export function App() {
               <Redo2 size={17} />
             </IconButton>
           </div>
-          <button
+          <Button variant="ghost"
             className="text-button"
             aria-label="New site"
             title="Create a new site"
@@ -960,8 +966,8 @@ export function App() {
           >
             <Plus size={16} />
             <span>New</span>
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             className="text-button open-button"
             aria-label="Open"
             title="Open project file"
@@ -969,8 +975,8 @@ export function App() {
           >
             <ArrowUpFromLine size={16} />
             <span>Open</span>
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             className="text-button"
             aria-label="Export"
             title="Export project file"
@@ -978,8 +984,8 @@ export function App() {
           >
             <ArrowDownToLine size={16} />
             <span>Export</span>
-          </button>
-          <button
+          </Button>
+          <Button variant="default"
             className="primary-button"
             aria-label="Save project"
             title="Save project locally"
@@ -987,9 +993,9 @@ export function App() {
           >
             <Save size={16} />
             <span>Save project</span>
-          </button>
+          </Button>
         </div>
-        <input
+        <Input
           ref={fileInput}
           type="file"
           accept=".json,.olc.json,application/json"
@@ -1003,30 +1009,13 @@ export function App() {
         <WorkspaceSidebar name={state.project.name} mobileActive={panel==='scene'} onRename={()=>setProjectDialog('rename')}
           layers={<LayersPanel project={state.project} editor={editor} selectedIds={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]} isolatedId={state.isolatedLayerId} guard={guard} onSelectObjects={ids=>{select(ids[0]??null);setSelectedParts(ids);}}/>}
           objects={<SceneObjects project={project} selectedId={state.selectedId} selectedIds={selectedParts} editor={editor} onSelect={select} guard={guard} isolatedId={state.isolatedLayerId}/>}
-          actions={<><details className="creation-menu"><summary><Plus size={15}/>Add…</summary><div className="creation-menu-content" onClick={event=>{if((event.target as HTMLElement).closest('button:not(:disabled)'))event.currentTarget.parentElement?.removeAttribute('open');}}>          <button className="add-object" onClick={addBlock}>
-            <Plus size={15} />
-            Add massing block
-          </button>
-          <div className="creation-tools">
-            <button onClick={() => addBuilding()}>
-              <Layers size={14} />
-              Add building
-            </button>
-            <button
-              aria-pressed={tool === "building"}
-              onClick={() => {
-                chooseTool("building");
-                setView("top");
-              }}
-            >
-              <Focus size={14} />
-              Draw footprint
-            </button>
-
-            <button
-              disabled={importingModel}
-              onClick={() => {
-                void fetch("/models/openlandcraft-pine.glb")
+          actions={<>
+            <CreationMenu project={project} busy={!!state.gestureLabel} importingModel={importingModel}
+              onAddBlock={addBlock} onAddBuilding={()=>addBuilding()}
+              onDrawBuilding={()=>{chooseTool('building');setView('top');}}
+              onRegions={()=>openRegions()} onWater={()=>openWaterSystem()}
+              onAddPath={()=>addPath()} onDrawPath={()=>{chooseTool('path');setView('top');}}
+              onAddOcean={addOcean} onDemoTree={()=>{void fetch("/models/openlandcraft-pine.glb")
                   .then((response) => {
                     if (!response.ok)
                       throw new Error("Demo model could not load.");
@@ -1035,14 +1024,11 @@ export function App() {
                   .then((blob) =>
                     importModel(new File([blob], "Coastal pine.glb")),
                   )
-                  .catch((error: Error) => setError(error.message));
-              }}
-            >
-              <Leaf size={14} />
-              Demo tree
-            </button>
-          </div>
-          <input
+                  .catch((error: Error) => setError(error.message));}}
+              onPlaceAsset={placeAsset}
+              onRemoveAsset={id=>guard(()=>editor.execute({type:'removeAsset',id},'Remove model source'))}
+            />
+          <Input
             ref={modelInput}
             type="file"
             accept=".glb,model/gltf-binary"
@@ -1050,73 +1036,11 @@ export function App() {
             aria-label="Import GLB model"
             onChange={(event) => void importModel(event.target.files?.[0])}
           />
-          <button className="water-entry region-entry" onClick={()=>openRegions()}><Leaf size={19}/><span>Landscape regions<small>Surface · Planting</small></span></button>
-          <button className="water-entry" type="button" onClick={()=>openWaterSystem()}><Droplets size={19}/><span>Water System<small>River · Lake</small></span></button>
-          <div className="creation-tools path-creation">
-            <button disabled={project.entities.some(entity => entity.kind === "path")} onClick={() => addPath()}><Route size={14} />Add path</button>
-            <button disabled={project.entities.some(entity => entity.kind === "path")} aria-pressed={tool === "path"} onClick={() => { chooseTool("path"); setView("top"); }}><MousePointer2 size={14} />Draw path</button>
-          </div>
-          <div className="creation-tools ocean-creation">
-            <button
-              disabled={project.entities.some(
-                (entity) => entity.kind === "ocean",
-              )}
-              onClick={addOcean}
-            >
-              <Waves size={14} />
-              Add ocean
-            </button>
-          </div>
-          {project.assets.length > 0 && (
-            <section className="asset-library" aria-label="Model library">
-              <h3>MODEL LIBRARY</h3>
-              {project.assets.map((asset) => {
-                const used = project.entities.some(
-                  (entity) =>
-                    (entity.kind === "instance" || entity.kind === "plantingRegion") && entity.assetId === asset.id,
-                );
-                return (
-                  <div key={asset.id}>
-                    <span title={asset.name}>{asset.name}</span>
-                    <button
-                      disabled={!!state.gestureLabel}
-                      onClick={() => placeAsset(asset)}
-                      aria-label={`Place ${asset.name}`}
-                      title="Place another instance"
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <button
-                      disabled={used || !!state.gestureLabel}
-                      aria-label={`Remove source ${asset.name}`}
-                      title={
-                        used
-                          ? "Delete its instances and planting regions before removing the source"
-                          : "Remove unused model source"
-                      }
-                      onClick={() =>
-                        guard(() =>
-                          editor.execute(
-                            { type: "removeAsset", id: asset.id },
-                            "Remove model source",
-                          ),
-                        )
-                      }
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                );
-              })}
-            </section>
-          )}
-</div></details>            <button
-              disabled={importingModel}
-              onClick={() => modelInput.current?.click()}
-            >
-              <ArrowUpFromLine size={14} />
-              {importingModel ? "Reading GLB…" : "Import GLB"}
-            </button></>}
+
+            <Button variant="outline" className="flex-1" disabled={importingModel} onClick={()=>modelInput.current?.click()}>
+              <ArrowUpFromLine size={14}/>{importingModel?'Reading GLB…':'Import GLB'}
+            </Button>
+          </>}
         />
 
         <main className="stage" aria-label="3D editor">
@@ -1175,7 +1099,7 @@ export function App() {
             />
             {tool==='select'&&selected?.visible&&(selected.kind==='level'||selected.kind==='unit')&&<div ref={copyElement} className="floor-copy-control" role="group" aria-label="Duplicate above controls">
               <div className="copy-scope">{selected.kind==='unit'?'Selected unit':'Whole floor'}</div><strong>{selected.name}</strong>
-              <label>Floor spacing <span><input aria-label="Copy floor spacing" type="number" min={0.5} max={30} step={0.1} value={copyHeight} disabled={!!state.gestureLabel} onChange={e=>{const value=Number(e.target.value);setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}}/> m</span></label>
+              <Field>Floor spacing <span><NumericInput aria-label="Copy floor spacing" min={0.5} max={30} step={0.1} value={copyHeight} disabled={!!state.gestureLabel} onChange={e=>{const value=Number(e.target.value);setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}}/> m</span></Field>
               {copyDraft&&<p>Preview above · {copyResult.plan?.movedRoofIds.length?'top roof moves up':'independent copy'}. Each placement is one undo step.</p>}
               {copyResult.error&&<p className="copy-error" role="alert">{copyResult.error}</p>}
               <button disabled={!!state.gestureLabel||!!copyDraft&&!copyResult.plan} onClick={duplicateNext}><ArrowUp size={17}/>{copyDraft?'Place copy above':'Duplicate above'}</button>
@@ -1302,14 +1226,13 @@ export function App() {
                           : "Scale"}
                     </button>
                   ))}
-                  <label>
-                    <input
-                      type="checkbox"
+                  <Field variant="checkbox">
+                    <CheckboxInput
                       checked={snapping}
                       onChange={(event) => setSnapping(event.target.checked)}
                     />
                     Snap
-                  </label>
+                  </Field>
                 </div>
               )}
             {tool==='wall'&&<div className="building-hud river-hud" role="status"><span>{wallDraft.length} wall corners · fixed level plane</span><button disabled={wallDraft.length<2} onClick={()=>finishWalls(false)}>Preview open chain</button><button disabled={wallDraft.length<3} onClick={()=>finishWalls(true)}>Preview closed room</button><button disabled={!wallDraft.length} onClick={()=>setWallDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool('select')}>Cancel</button></div>}
@@ -1324,11 +1247,11 @@ export function App() {
                 <button onClick={() => chooseTool("select")}>Cancel</button>
               </div>
             )}
-            {tool==="region"&&<div className="building-hud river-hud region-hud" role="status"><Leaf size={15}/><span>{regionDraft.length} boundary points</span><label><input type="checkbox" aria-label="Snap drawing region" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</label><button disabled={regionDraft.length<3} onClick={()=>addRegion(regionDraft)}>Finish region</button><button disabled={!regionDraft.length} onClick={()=>setRegionDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
-            {tool==="lake"&&<div className="building-hud river-hud lake-hud" role="status"><Droplets size={15}/><span>{lakeDraft.length?`${lakeDraft.length} boundary points · Finish closes the shoreline`:"Choose the first lake boundary point on land"}</span><label><input type="checkbox" aria-label="Snap drawing lake" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</label><button disabled={lakeDraft.length<3} onClick={()=>addLake(lakeDraft)}>Finish lake</button><button disabled={!lakeDraft.length} onClick={()=>setLakeDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
+            {tool==="region"&&<div className="building-hud river-hud region-hud" role="status"><Leaf size={15}/><span>{regionDraft.length} boundary points</span><Field variant="checkbox"><CheckboxInput aria-label="Snap drawing region" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</Field><button disabled={regionDraft.length<3} onClick={()=>addRegion(regionDraft)}>Finish region</button><button disabled={!regionDraft.length} onClick={()=>setRegionDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
+            {tool==="lake"&&<div className="building-hud river-hud lake-hud" role="status"><Droplets size={15}/><span>{lakeDraft.length?`${lakeDraft.length} boundary points · Finish closes the shoreline`:"Choose the first lake boundary point on land"}</span><Field variant="checkbox"><CheckboxInput aria-label="Snap drawing lake" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</Field><button disabled={lakeDraft.length<3} onClick={()=>addLake(lakeDraft)}>Finish lake</button><button disabled={!lakeDraft.length} onClick={()=>setLakeDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
             {tool === "path" && <div className="building-hud river-hud path-hud" role="status">
               <Route size={15} /><span>{pathDraft.length ? `${pathDraft.length} points · ${pathLength(pathDraft).toFixed(1)} m · Choose next point` : "Choose the path start on land"}</span>
-              <label><input type="checkbox" aria-label="Snap drawing path" checked={snapping} onChange={event => setSnapping(event.target.checked)} />Snap</label>
+              <Field variant="checkbox"><CheckboxInput aria-label="Snap drawing path" checked={snapping} onChange={event => setSnapping(event.target.checked)} />Snap</Field>
               <button disabled={pathDraft.length < 2} onClick={() => addPath(pathDraft)}>Finish path</button>
               <button disabled={!pathDraft.length} onClick={() => setPathDraft(points => points.slice(0,-1))}>Back</button>
               <button onClick={() => chooseTool("select")}>Cancel</button>
@@ -1383,16 +1306,16 @@ export function App() {
               <span className="playback-state">
                 {hasWater ? (playing ? "Playing" : "Paused") : "—"}
               </span>
-              <select
+              <SelectInput appearance="toolbar" side="top"
                 aria-label="Preview quality"
                 value={quality}
-                onChange={(event) =>
-                  setQuality(event.target.value as "low" | "high")
+                onValueChange={(value) =>
+                  setQuality(value as "low" | "high")
                 }
               >
-                <option value="high">High quality</option>
-                <option value="low">Low quality</option>
-              </select>
+                <SelectOption value="high">High quality</SelectOption>
+                <SelectOption value="low">Low quality</SelectOption>
+              </SelectInput>
             </div>
             <div className="navigation-hint">
               {tool === "terrain" ? (
@@ -1451,30 +1374,17 @@ export function App() {
           </footer>
         </main>
 
-        <aside
-          id="inspector"
-          className={`inspector ${panel === "inspector" ? "mobile-active" : ""}`}
-          aria-label="Object inspector"
+        <InspectorPanel
+          mobileActive={panel === "inspector"}
+          editing={!!state.gestureLabel}
+          selectionKey={focusedOpening?.id ?? state.selectedId ?? ''}
+          scope={placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
-          <div className="inspector-header">
-            <span>PROPERTIES</span>
-            <Settings2 size={15} />
-          </div>
-          {!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/>}
+          {!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
           {outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
-            <div className="inspector-content terrain-inspector">
-              <div className="object-heading">
-                <div className="object-icon">
-                  <Mountain size={24} />
-                </div>
-                <div>
-                  <h2>Site terrain</h2>
-                  <span>Editable heightfield</span>
-                </div>
-              </div>
-              <TerrainMaterialFields key={`${state.revision}-${inspectorEpoch}`} materials={project.site.materials} editor={editor} onEdit={() => setTool("select")} cancel={cancelPreview} />
-              <section className="property-section">
-                <h3>Sculpt</h3>
+            <PanelBody className="terrain-inspector">
+              <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
+              <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
                 <div className="brush-kinds">
                   {(
                     [
@@ -1499,14 +1409,12 @@ export function App() {
                     </button>
                   ))}
                 </div>
-              </section>
-              <section className="property-section">
-                <h3>Brush settings</h3>
-                <label className="brush-slider">
+              </InspectorSection>
+              <InspectorSection sectionId="app-brush" title={<>Brush settings</>}>
+                <Field variant="range">
                   Radius<span>{brush.radius.toFixed(1)} m</span>
-                  <input
+                  <RangeInput
                     aria-label="Brush radius"
-                    type="range"
                     min="1"
                     max="20"
                     step="0.5"
@@ -1519,12 +1427,11 @@ export function App() {
                       }))
                     }
                   />
-                </label>
-                <label className="brush-slider">
+                </Field>
+                <Field variant="range">
                   Strength<span>{Math.round(brush.strength * 100)}%</span>
-                  <input
+                  <RangeInput
                     aria-label="Brush strength"
-                    type="range"
                     min="0.05"
                     max="1"
                     step="0.05"
@@ -1537,7 +1444,7 @@ export function App() {
                       }))
                     }
                   />
-                </label>
+                </Field>
                 {brush.kind === "flatten" && (
                   <NumberField
                     label="Flatten elevation"
@@ -1549,30 +1456,29 @@ export function App() {
                     }
                   />
                 )}
-              </section>
-              <section className="property-section">
-                <h3>Terrain data</h3>
-                <div className="read-only-row">
+              </InspectorSection>
+              <TerrainMaterialFields key={`${state.revision}-${inspectorEpoch}`} materials={project.site.materials} editor={editor} onEdit={() => setTool("select")} cancel={cancelPreview} />
+              <InspectorSection sectionId="app-terrain-data" title={<>Terrain data</>} defaultOpen={false}>
+                <PropertyRow>
                   <span>Grid</span>
                   <span>
                     {project.site.terrain.columns} × {project.site.terrain.rows}
                   </span>
-                </div>
-                <div className="read-only-row">
+                </PropertyRow>
+                <PropertyRow>
                   <span>Height range</span>
                   <span>
                     {MIN_HEIGHT} to {MAX_HEIGHT} m
                   </span>
-                </div>
-                <div className="read-only-row">
+                </PropertyRow>
+                <PropertyRow>
                   <span>Preview latency</span>
                   <span>
                     {strokeTime ? `${strokeTime.toFixed(1)} ms` : "—"}
                   </span>
-                </div>
-              </section>
-              <details className="stamp-placement">
-                <summary>Place a stamp with coordinates</summary>
+                </PropertyRow>
+              </InspectorSection>
+              <InspectorSection sectionId="terrain-stamp" title="Stamp coordinates" className="stamp-placement" defaultOpen={false}>
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
@@ -1598,26 +1504,26 @@ export function App() {
                         setStampPosition((value) => [value[0], z])
                       }
                     />
-                    <button type="submit" className="text-button">
+                    <Button variant="ghost" type="submit" className="text-button">
                       Preview stamp
-                    </button>
+                    </Button>
                   </fieldset>
                 </form>
                 {state.gestureLabel?.endsWith("stamp") && (
-                  <div className="stamp-actions">
-                    <button
+                  <Row className="stamp-actions">
+                    <Button variant="default"
                       className="primary-button"
                       onClick={() => editor.commit()}
                     >
                       <Check size={14} />
                       Apply stamp
-                    </button>
-                    <button className="text-button" onClick={cancelPreview}>
+                    </Button>
+                    <Button variant="ghost" className="text-button" onClick={cancelPreview}>
                       Cancel stamp
-                    </button>
-                  </div>
+                    </Button>
+                  </Row>
                 )}
-              </details>
+              </InspectorSection>
               <div className="terrain-instructions">
                 <strong>
                   {state.gestureLabel ??
@@ -1629,7 +1535,7 @@ export function App() {
                   Drag on the ground to sculpt. Release to commit one undo step.
                   Escape cancels the current stroke.
                 </p>
-                <button
+                <Button variant="default"
                   className="primary-button"
                   onClick={() =>
                     chooseTool(tool === "terrain" ? "select" : "terrain")
@@ -1643,13 +1549,13 @@ export function App() {
                   {tool === "terrain"
                     ? "Switch to navigation"
                     : "Sculpt terrain"}
-                </button>
+                </Button>
               </div>
-              <p className="scope-note">
+              <InspectorSection sectionId="app-notes-1" title="About terrain" defaultOpen={false}><FieldMessage>
                 Building elevations stay fixed while terrain changes. Water
                 depth updates from the edited ground.
-              </p>
-            </div>
+              </FieldMessage></InspectorSection>
+            </PanelBody>
           ) : regionsOpen && (!selected||isRegion(selected)) ? (
             <RegionTools type={regionType} onType={openRegions} editor={editor} onSelect={select} onDraw={()=>{chooseTool("region");setView("top");}} onAdd={()=>addRegion()} drawing={tool==="region"}>
               {selected&&isRegion(selected)?<RegionInspector key={selected.id+"-"+state.revision+"-"+inspectorEpoch} region={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping}/>:undefined}
@@ -1692,8 +1598,7 @@ export function App() {
               guard={guard}
             />
           ) : selected ? (
-            <form
-              className="inspector-content"
+            <PanelForm
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}
               onInputCapture={() =>
                 guard(() => {
@@ -1706,28 +1611,17 @@ export function App() {
                 guard(() => editor.commit());
               }}
             >
-              <div className="object-heading">
-                <div className="object-icon">
-                  {selected.kind === "block" ? (
+              <PanelHeading title={<>{selected.name}</>} icon={<>{selected.kind === "block" ? (
                     <Box size={23} strokeWidth={1.4} />
                   ) : (
                     <Waves size={24} strokeWidth={1.4} />
-                  )}
-                </div>
-                <div>
-                  <h2>{selected.name}</h2>
-                  <span>
-                    {selected.kind === "block"
+                  )}</>} subtitle={<>{selected.kind === "block"
                       ? "Massing block"
-                      : "Directional ocean surface"}
-                  </span>
-                </div>
-              </div>
-              <section className="property-section">
-                <h3>Object</h3>
-                <label className="name-field">
+                      : "Directional ocean surface"}</>} />
+              <InspectorSection sectionId="app-object" title={<>Object</>}>
+                <Field>
                   Name
-                  <input
+                  <TextInput
                     aria-label="Object name"
                     value={selected.name}
                     maxLength={80}
@@ -1736,22 +1630,19 @@ export function App() {
                         preview({ ...selected, name: event.target.value });
                     }}
                   />
-                </label>
-                <div className="read-only-row">
+                </Field>
+                <PropertyRow>
                   <span>Parent</span>
                   <span>
                     <Mountain size={13} />
                     Site
                   </span>
-                </div>
-              </section>
+                </PropertyRow>
+              </InspectorSection>
               {selected.kind === "block" ? (
                 <>
-                  <section className="property-section">
-                    <h3>
-                      Dimensions<span>METERS</span>
-                    </h3>
-                    <div className="dimension-fields">
+                  <InspectorSection sectionId="app-dimensions" title={<>Dimensions<span>METERS</span></>}>
+                    <FieldGrid columns={3}>
                       {(["Width", "Height", "Depth"] as const).map(
                         (label, index) => (
                           <NumberField
@@ -1768,13 +1659,10 @@ export function App() {
                           />
                         ),
                       )}
-                    </div>
-                  </section>
-                  <section className="property-section">
-                    <h3>
-                      Position<span>LOCAL</span>
-                    </h3>
-                    <div className="position-fields">
+                    </FieldGrid>
+                  </InspectorSection>
+                  <InspectorSection sectionId="app-position" title={<>Position<span>LOCAL</span></>}>
+                    <FieldGrid columns={3}>
                       {(
                         ["X position", "Y position", "Z position"] as const
                       ).map((label, index) => (
@@ -1793,7 +1681,7 @@ export function App() {
                           }}
                         />
                       ))}
-                    </div>
+                    </FieldGrid>
                     <NumberField
                       label="Rotation"
                       value={selected.rotation}
@@ -1803,12 +1691,11 @@ export function App() {
                       unit="°"
                       onChange={(rotation) => changeBlock({ rotation })}
                     />
-                  </section>
+                  </InspectorSection>
                 </>
               ) : (
-                <section className="property-section">
-                  <h3>Ocean and waves</h3>
-                  <div className="water-fields">
+                <InspectorSection sectionId="app-ocean-waves" title={<>Ocean and waves</>}>
+                  <FieldGrid columns={2}>
                     <NumberField
                       label="Water level"
                       value={selected.level}
@@ -1849,13 +1736,13 @@ export function App() {
                       unit="×"
                       onChange={(speed) => changeOcean({ speed })}
                     />
-                  </div>
-                  <p className="field-hint">
+                  </FieldGrid>
+                  <FieldMessage>
                     Travel direction: 0° toward +X, 90° toward +Z. Wavelength is
                     the main crest spacing. Wave fronts follow the evaluated
                     terrain into the shoreline.
-                  </p>
-                </section>
+                  </FieldMessage>
+                </InspectorSection>
               )}
               {selected.kind === "ocean" && (
                 <CoastFields
@@ -1878,12 +1765,10 @@ export function App() {
                 />
               )}
               {selected.kind === "ocean" && <WaterMaterialFields appearance={selected.appearance} color={selected.color} onChange={changeOcean} />}
-              <section className="property-section">
-                <h3>Appearance</h3>
-                <label className="color-field">
-                  <input
+              <InspectorSection sectionId="app-appearance" title={<>Appearance</>} defaultOpen={false}>
+                <Field variant="color">
+                  <ColorInput
                     aria-label="Object color"
-                    type="color"
                     value={selected.color}
                     onChange={(event) =>
                       preview({ ...selected, color: event.target.value })
@@ -1891,10 +1776,10 @@ export function App() {
                   />
                   <span>Base color</span>
                   <code>{selected.color.toUpperCase()}</code>
-                </label>
-              </section>
-              <div
-                className={`edit-actions ${state.gestureLabel ? "has-preview" : ""}`}
+                </Field>
+              </InspectorSection>
+              <ActionBar
+                pending={!!(state.gestureLabel)}
               >
                 <div>
                   <span className="status-dot" />
@@ -1902,15 +1787,15 @@ export function App() {
                     ? "Previewing changes"
                     : "All changes applied"}
                 </div>
-                <button
+                <Button variant="default"
                   type="submit"
                   className="primary-button"
                   disabled={!state.gestureLabel}
                 >
                   <Check size={15} />
                   Apply changes
-                </button>
-                <button
+                </Button>
+                <Button variant="ghost"
                   type="button"
                   className="cancel-button"
                   disabled={!state.gestureLabel}
@@ -1918,20 +1803,20 @@ export function App() {
                 >
                   <RotateCcw size={13} />
                   Cancel preview<span>Esc</span>
-                </button>
-              </div>
-              <div className="object-actions">
+                </Button>
+              </ActionBar>
+              <ActionRow>
                 {selected.kind === "block" && (
-                  <button
+                  <Button variant="outline" size="sm"
                     type="button"
                     disabled={!!state.gestureLabel}
                     onClick={duplicate}
                   >
                     <Copy size={14} />
                     Duplicate
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button variant="destructive" size="sm"
                   type="button"
                   disabled={!!state.gestureLabel}
                   className="delete-button"
@@ -1946,14 +1831,14 @@ export function App() {
                 >
                   <Trash2 size={14} />
                   Delete
-                </button>
-              </div>
-              <p className="scope-note">
+                </Button>
+              </ActionRow>
+              <InspectorSection sectionId="app-notes-2" title="About this object" defaultOpen={false}><FieldMessage>
                 {selected.kind === "block"
                   ? "Concept massing. Add a building for separate levels, walls, slabs, and roofs."
                   : "Coastal motion is a visual approximation. Underwater views and physical fluid simulation remain future work."}
-              </p>
-            </form>
+              </FieldMessage></InspectorSection>
+            </PanelForm>
           ) : (
             <div className="empty-inspector">
               <MousePointer2 size={26} />
@@ -1962,13 +1847,13 @@ export function App() {
                 Pick an object in the viewport or scene list to edit its
                 properties.
               </p>
-              <button className="text-button" onClick={addBlock}>
+              <Button variant="ghost" className="text-button" onClick={addBlock}>
                 <Plus size={16} />
                 Add a block
-              </button>
+              </Button>
             </div>
           )}
-        </aside>
+        </InspectorPanel>
       </div>
       <nav className="mobile-panels" aria-label="Editor panels">
         <button
@@ -2069,7 +1954,7 @@ export function App() {
             <dt>Save</dt>
             <dd>Ctrl/Cmd S · Export for a portable file</dd>
           </dl>
-          <p className="field-hint">
+          <FieldMessage>
             Terrain supports raise, lower, flatten, and smooth. Drag to sculpt;
             release to commit one undo step. Coordinate stamps provide keyboard
             editing. Draw footprint creates a building from two snapped corners.
@@ -2080,7 +1965,7 @@ export function App() {
             Properties. Draw lake closes a shoreline with editable level, depth,
             banks, and wind waves. Ocean has its own controls. Draw path creates a terrain-following route with editable
             points, width, and surface. Endpoints can snap to building edges. Landscape regions adds surface materials and seeded planting areas. Preview regeneration before Apply; editing an individual plant detaches it from regeneration.
-          </p>
+          </FieldMessage>
           {metrics && (
             <p className="renderer-info">
               {metrics.renderer}

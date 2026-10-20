@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap');
+
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+/* Keep the existing app reset while the remaining feature styles migrate. */
+@import "./styles.css" layer(legacy);
+@import "./materials.css" layer(legacy);
+@import "./openings.css" layer(legacy);
+@import "./rivers.css" layer(legacy);
+@import "./paths.css" layer(legacy);
+@import "./water-system.css" layer(legacy);
+@import "./validation.css" layer(legacy);
+@import "./coastal-view.css" layer(legacy);
+@import "./regions.css" layer(legacy);
+@import "./floors.css" layer(legacy);
+@import "./layers.css" layer(legacy);
+@import "./inspector.css" layer(legacy);
+@import "./ui/theme.css";
+@import "tailwindcss/utilities.css" layer(utilities) source("./");

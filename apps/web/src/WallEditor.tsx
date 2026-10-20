@@ -1,6 +1,7 @@
+import { Button, PanelHeading, CheckboxInput, ColorInput, Field, FieldControl, FieldGrid, FieldMessage, NumericInput, Panel, Row, TextInput } from './ui';
 import { useEffect, useState } from 'react';
 import { applyCommand, unitForPart, wallLength, type Editor, type Level, type Wall } from '@openlandcraft/core';
-import './openings.css';
+import { InspectorSection } from './InspectorSection';
 
 export function WallEditor({ wall, level, editing, editor, snapping, onSnapping, onFrame, onFinish, onSelect, status, onStatus }: {
   wall: Wall; level?: Level; editing: boolean; editor: Editor; snapping: boolean; onSnapping: (value: boolean) => void;
@@ -24,31 +25,31 @@ export function WallEditor({ wall, level, editing, editor, snapping, onSnapping,
     candidate = { ...wall, name, color, joins, start: [n('startX'), n('startZ')], end: [n('endX'), n('endZ')], height: n('height'), thickness: n('thickness'), elevation: n('elevation') };
     applyCommand(state.project, { type: 'replace', entity: candidate });
   } catch (error) { issue = error instanceof Error ? error.message : 'Invalid wall dimensions.'; }
-  return <section className="opening-tools" aria-label={editing ? 'Edit wall' : 'Selected wall'}>
-    <div className="opening-tool-heading"><span>{editing ? 'EDIT ON FLOOR' : 'SELECTED ELEMENT'}</span><h2>{editing ? 'Editing wall' : 'Wall selected'}</h2></div>
-    <p className="field-hint">{wall.name} · {level?.name}</p>
+  return <Panel padding="body" className="opening-tools" aria-label={editing ? 'Edit wall' : 'Selected wall'}>
+    <PanelHeading title={<>{editing ? 'Editing wall' : 'Wall selected'}</>} subtitle={<>{editing ? 'EDIT ON FLOOR' : 'SELECTED ELEMENT'}</>} />
+    <FieldMessage>{wall.name} · {level?.name}</FieldMessage>
     <p className="opening-feedback" role="status">{editing ? status : 'Double-click this wall to edit. You can also press Enter.'}</p>
     <dl className="opening-summary"><dt>Length × height</dt><dd>{wallLength(wall).toFixed(2)} × {wall.height.toFixed(2)} m</dd><dt>Wall connections</dt><dd>{wall.joins ? 'Joined corners move together' : 'Independent wall'}</dd></dl>
-    <button className="text-button" onClick={onFrame}>Frame selected wall · F</button>
+    <Button variant="ghost" className="text-button" onClick={onFrame}>Frame selected wall · F</Button>
     {editing ? <>
-      <p className="field-hint">Drag the wall body to move it on the floor plane, or drag Start / End to reshape it. This floor is isolated and its roof hidden. Floors and roofs keep their outlines.</p>
-      <label className="check-field"><input type="checkbox" checked={snapping} disabled={!!state.gestureLabel} onChange={e => onSnapping(e.target.checked)} />Snap wall edits to 0.25 m</label>
-      <form onSubmit={event => { event.preventDefault(); if (candidate && !issue && changed) try { editor.execute({ type: 'replace', entity: candidate }, 'Edit wall dimensions'); onStatus('Wall dimensions applied.'); } catch (error) { onStatus(error instanceof Error ? error.message : 'Invalid wall edit.'); } }}>
+      <FieldMessage>Drag the wall body to move it on the floor plane, or drag Start / End to reshape it. This floor is isolated and its roof hidden. Floors and roofs keep their outlines.</FieldMessage>
+      <Field variant="checkbox"><CheckboxInput checked={snapping} disabled={!!state.gestureLabel} onChange={e => onSnapping(e.target.checked)} />Snap wall edits to 0.25 m</Field>
+      <InspectorSection sectionId="wall-dimensions" title="Dimensions & appearance"><form onSubmit={event => { event.preventDefault(); if (candidate && !issue && changed) try { editor.execute({ type: 'replace', entity: candidate }, 'Edit wall dimensions'); onStatus('Wall dimensions applied.'); } catch (error) { onStatus(error instanceof Error ? error.message : 'Invalid wall edit.'); } }}>
         <fieldset className="opening-edit-fields" disabled={!!state.gestureLabel}>
-        <label className="name-field">Name<input aria-label="Wall name" value={name} maxLength={80} required onChange={e => setName(e.target.value)} /></label>
-        <label className="check-field"><input type="checkbox" checked={!!joins} onChange={e => setJoins(e.target.checked)} />Join wall chain</label>
-        <p className="field-hint">Joining and profile changes apply to the connected wall chain.</p><div className="construction-fields">{fields.map(key => <label key={key} className="number-field"><span>{labels[key]}</span><div><input aria-label={labels[key]} type="number" step="any" required value={values[key]} onChange={e => setValues(old => ({ ...old, [key]: e.target.value }))} /><small>m</small></div></label>)}</div>
-        <label className="number-field"><span>Wall length</span><div><input aria-label="Wall length" type="number" min="0.2" max="200" step="any" value={Number.isFinite(length)?Number(length.toFixed(8)):''} onChange={e=>{const value=Number(e.target.value);if(length>0&&Number.isFinite(value))setDirection(dx*value/length,dz*value/length);}}/><small>m</small></div></label>
-        <div className="part-buttons"><button type="button" onClick={()=>setDirection((Math.sign(dx)||Math.sign(dz)||1)*length,0)}>Align X</button><button type="button" onClick={()=>setDirection(0,(Math.sign(dz)||Math.sign(dx)||1)*length)}>Align Z</button></div>
-        <label className="color-field"><input aria-label="Wall color" type="color" value={color} onChange={e => setColor(e.target.value)} /><span>Wall color</span></label>
-        {issue && <p role="alert" className="field-hint">{issue}</p>}
-        <button className="primary-button" type="submit" disabled={!changed || !!issue}>Apply wall dimensions</button></fieldset>
-      </form>
-      <p className="field-hint">Openings keep their offsets from the wall start. Changes that clip openings or create unsupported corners are rejected. Each drag is one undo step.</p>
-      <button className="text-button" disabled={!!state.gestureLabel} onClick={() => { try { editor.execute({ type: 'remove', id: wall.id }, 'Delete wall'); onFinish(); } catch (error) { onStatus(error instanceof Error ? error.message : 'Cannot delete wall.'); } }}>Delete wall and its openings</button>
-      <button className="primary-button" onClick={onFinish}>Finish editing <span>Esc</span></button>
-    </> : <p className="field-hint">Single clicks only select. Double-click shows the editing handles.</p>}
-    {level && <button className="text-button" onClick={() => onSelect(level.id)}>Select whole floor · {level.name}</button>}
-    {unit && <button className="text-button" onClick={() => onSelect(unit.id)}>Select whole unit · {unit.name}</button>}
-  </section>;
+        <Field>Name<TextInput aria-label="Wall name" value={name} maxLength={80} required onChange={e => setName(e.target.value)} /></Field>
+        <Field variant="checkbox"><CheckboxInput checked={!!joins} onChange={e => setJoins(e.target.checked)} />Join wall chain</Field>
+        <FieldMessage>Joining and profile changes apply to the connected wall chain.</FieldMessage><FieldGrid columns={'auto'}>{fields.map(key => <Field variant="number" key={key}><span>{labels[key]}</span><FieldControl><NumericInput aria-label={labels[key]} step="any" required value={values[key]} onChange={e => setValues(old => ({ ...old, [key]: e.target.value }))} /><small>m</small></FieldControl></Field>)}</FieldGrid>
+        <Field variant="number"><span>Wall length</span><FieldControl><NumericInput aria-label="Wall length" min="0.2" max="200" step="any" value={Number.isFinite(length)?Number(length.toFixed(8)):''} onChange={e=>{const value=Number(e.target.value);if(length>0&&Number.isFinite(value))setDirection(dx*value/length,dz*value/length);}}/><small>m</small></FieldControl></Field>
+        <Row className="part-buttons"><button type="button" onClick={()=>setDirection((Math.sign(dx)||Math.sign(dz)||1)*length,0)}>Align X</button><button type="button" onClick={()=>setDirection(0,(Math.sign(dz)||Math.sign(dx)||1)*length)}>Align Z</button></Row>
+        <Field variant="color"><ColorInput aria-label="Wall color" value={color} onChange={e => setColor(e.target.value)} /><span>Wall color</span></Field>
+        {issue && <FieldMessage tone="error" role="alert">{issue}</FieldMessage>}
+        <Button variant="default" className="primary-button" type="submit" disabled={!changed || !!issue}>Apply wall dimensions</Button></fieldset>
+      </form></InspectorSection>
+      <FieldMessage>Openings keep their offsets from the wall start. Changes that clip openings or create unsupported corners are rejected. Each drag is one undo step.</FieldMessage>
+      <Button variant="ghost" className="text-button" disabled={!!state.gestureLabel} onClick={() => { try { editor.execute({ type: 'remove', id: wall.id }, 'Delete wall'); onFinish(); } catch (error) { onStatus(error instanceof Error ? error.message : 'Cannot delete wall.'); } }}>Delete wall and its openings</Button>
+      <Button variant="default" className="primary-button" onClick={onFinish}>Finish editing <span>Esc</span></Button>
+    </> : <FieldMessage>Single clicks only select. Double-click shows the editing handles.</FieldMessage>}
+    {level && <Button variant="ghost" className="text-button" onClick={() => onSelect(level.id)}>Select whole floor · {level.name}</Button>}
+    {unit && <Button variant="ghost" className="text-button" onClick={() => onSelect(unit.id)}>Select whole unit · {unit.name}</Button>}
+  </Panel>;
 }
