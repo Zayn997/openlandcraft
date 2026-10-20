@@ -73,11 +73,13 @@ const regionBase={...base,points:z.array(localPoint).min(3).max(16)};
 export const materialRegionSchema=z.object({...regionBase,kind:z.literal('materialRegion'),surface:z.enum(['grass','sand','rock','gravel']),color,roughness:finite.min(0.3).max(1),detailScale:finite.min(0.25).max(4)}).strict();
 export const plantingRegionSchema=z.object({...regionBase,kind:z.literal('plantingRegion'),assetId:z.string().min(1),seed:finite.int().min(0).max(2147483647),density:finite.min(1).max(100),scaleMin:finite.min(0.05).max(5),scaleMax:finite.min(0.05).max(5),spacing:finite.min(0.5).max(15),clearance:finite.min(0).max(10),exclusions:z.object({water:z.boolean(),paths:z.boolean(),buildings:z.boolean()}).strict()}).strict();
 export const openingSchema=z.object({id:z.string().min(1).max(100),kind:z.enum(['door','window']),offset:finite.min(0).max(200),width:finite.min(0.3).max(20),height:finite.min(0.3).max(20),sill:finite.min(0).max(20)}).strict();
-export const wallSchema=legacyWallSchema.extend({joins:z.boolean().optional(),openings:z.array(openingSchema).max(8).optional()});
+const versionFourteenWallSchema=legacyWallSchema.extend({joins:z.boolean().optional(),openings:z.array(openingSchema).max(8).optional()});
+export const wallSchema=versionFourteenWallSchema.extend({junctions:z.object({start:z.string().min(1).max(100).optional(),end:z.string().min(1).max(100).optional()}).strict().optional()});
 export const slabSchema=legacySlabSchema.extend({outline:z.array(localPoint).min(3).max(16).optional()});
 export const roofSchema=legacyRoofSchema.extend({outline:z.array(localPoint).min(3).max(16).optional()});
 const versionElevenEntitySchema=z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,legacyLevelSchema,legacyWallSchema,legacySlabSchema,legacyRoofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema]);
-const versionTwelveEntitySchema=z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,legacyLevelSchema,wallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema]);
+const versionTwelveEntitySchema=z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,legacyLevelSchema,versionFourteenWallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema]);
+const versionFourteenEntitySchema=z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,levelSchema,versionFourteenWallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema]);
 export const entitySchema=z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,levelSchema,wallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema]);
 const envelope = {
   format: z.literal('openlandcraft.project'),
@@ -101,8 +103,9 @@ const versionNineSchema = versionEightSchema.extend({version:z.literal(9),entiti
 const versionTenSchema=versionNineSchema.extend({version:z.literal(10),entities:z.array(versionTenEntitySchema).max(1000)});
 const versionElevenSchema=versionTenSchema.extend({version:z.literal(11),entities:z.array(versionElevenEntitySchema).max(1000)});
 const versionTwelveSchema=versionElevenSchema.extend({version:z.literal(12),entities:z.array(versionTwelveEntitySchema).max(1000)});
-const versionThirteenSchema = z.object({ ...envelope, version: z.literal(13), site: siteSchema.extend({ terrain: terrainSchema, materials: terrainMaterialsSchema }), assets: z.array(assetSchema).max(16) }).strict();
-export const projectSchema = versionThirteenSchema.extend({ version: z.literal(14), layers: z.array(layerSchema).min(1).max(256), objectLayers: z.record(z.string(), z.string()), activeLayerId: z.string().nullable() }).superRefine((project, ctx) => {
+const versionThirteenSchema = z.object({ ...envelope, entities:z.array(versionFourteenEntitySchema).max(1000), version: z.literal(13), site: siteSchema.extend({ terrain: terrainSchema, materials: terrainMaterialsSchema }), assets: z.array(assetSchema).max(16) }).strict();
+const versionFourteenSchema = versionThirteenSchema.extend({ version: z.literal(14), layers: z.array(layerSchema).min(1).max(256), objectLayers: z.record(z.string(), z.string()), activeLayerId: z.string().nullable() });
+export const projectSchema = versionFourteenSchema.extend({version:z.literal(15),entities:z.array(entitySchema).max(1000)}).superRefine((project, ctx) => {
   const layersError = layerIssue(project, new Set(['terrain', ...project.entities.map(e => e.id)]));
   if (layersError) ctx.addIssue({code:'custom',path:['layers'],message:layersError});
   const architectureError=architectureIssue(project.entities);
@@ -224,6 +227,7 @@ export function parseProject(value: unknown): Project {
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===11){const legacy=versionElevenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:12};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===12){const legacy=versionTwelveSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:13};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===13){const legacy=versionThirteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:'default'};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===14){const legacy=versionFourteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:15};}
   const result = projectSchema.safeParse(candidate);
   if (!result.success) {
     const issue = result.error.issues[0];

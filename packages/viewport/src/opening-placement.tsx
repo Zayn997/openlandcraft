@@ -31,7 +31,7 @@ export function OpeningPlacement({ level, walls: incomingWalls, settings, onStat
   const walls = useMemo(() => incomingWalls, [wallsKey]);
   const [hit, setHit] = useState<{ wallId: string; point: WallHit } | null>(null);
   const wall = walls.find(w => w.id === hit?.wallId);
-  const result = wall && hit ? openingAtPoint(wall, level, hit.point, settings, '__opening_preview__') : null;
+  const result = wall && hit ? openingAtPoint(wall, level, hit.point, settings, '__opening_preview__',walls) : null;
   const opening = result?.opening;
   const message = result?.issue ?? (opening ? `${wall!.name} · ${opening.offset.toFixed(2)} m from start · Click to place ${settings.kind}` : `Point at a wall to place a ${settings.kind}.`);
   useEffect(() => onStatus(message), [message, onStatus]);

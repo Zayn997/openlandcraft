@@ -1,5 +1,11 @@
+import { DuplicateAbovePanel } from './DuplicateAbovePanel';
+import { ProjectName } from './ProjectName';
+import { ViewportToolbar } from './ViewportToolbar';
+import { ViewportStatusBar } from './ViewportStatusBar';
 import { CreationMenu } from './CreationMenu';
-import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, NumericInput, Panel, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, SelectInput, SelectOption, TextInput } from './ui';
+import { ArchitectureTools, type ArchitectureTool } from './ArchitectureTools';
+import { createDrawnSurface, drawingPoint } from '@openlandcraft/core';
+import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { InspectorPanel } from './InspectorPanel';
 import { canEditObject, objectLayer } from '@openlandcraft/core';
@@ -13,7 +19,7 @@ import {OpeningEditor} from './OpeningEditor';
 import {openingAtPoint, type OpeningSettings, type WallHit, type Level} from '@openlandcraft/core';
 import {OpeningTools, type OpeningDimensions} from './OpeningTools';
 import {createWallChain,snapWallPoint,type PlanPoint,type Wall} from '@openlandcraft/core';
-import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, unitForPart, selectionDelete, copySelection, pasteSelection, type EditorClipboard} from '@openlandcraft/core';
+import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, selectionDelete, copySelection, pasteSelection, type EditorClipboard} from '@openlandcraft/core';
 import {FloorTools,ArchitectureGroupInspector} from './FloorTools';
 import {
   useCallback,
@@ -33,20 +39,14 @@ import {
   DoorOpen,
   PanelsTopLeft,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Equal,
-  Eye,
-  EyeOff,
   Focus,
   Grid2X2,
   Layers,
   Leaf,
   Mountain,
   MousePointer2,
-  Pause,
-  Play,
   Plus,
   Redo2,
   RotateCcw,
@@ -169,7 +169,6 @@ export function App() {
   const [isolateFloor,setIsolateFloor]=useState(false);
   const [copyDraft,setCopyDraft]=useState<{sourceId:string;height:number;prefix:string}|null>(null);
   const [copySpacing,setCopySpacing]=useState<number|null>(null);
-  const copyElement=useRef<HTMLDivElement>(null);
   const selectedLevel=ownerLevel(project,state.selectedId);
   const copyHeight=copySpacing??copyDraft?.height??(selectedLevel?floorHeight(project,selectedLevel):3.4);
   const copyResult=useMemo(()=>{
@@ -209,7 +208,7 @@ export function App() {
   );
   const [storageRecovery, setStorageRecovery] = useState(false);
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [tool, setTool] = useState<"select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
+  const [tool, setTool] = useState<"select" | "terrain" | "building" | "wall" | "floor" | "roof" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
     "select",
   );
   const [regionsOpen,setRegionsOpen]=useState(false);
@@ -224,6 +223,10 @@ export function App() {
     useState<TransformMode>("translate");
   const [snapping, setSnapping] = useState(true);
   const [wallDraft,setWallDraft]=useState<PlanPoint[]>([]);
+  const [drawingLevelId,setDrawingLevelId]=useState<string | null>(null);
+  const [surfaceOffset,setSurfaceOffset]=useState(0);
+  const [surfaceThickness,setSurfaceThickness]=useState(0.2);
+  const drawingArchitecture=tool==='wall'||tool==='floor'||tool==='roof';
   const [buildingCorner, setBuildingCorner] = useState<[number, number] | null>(
     null,
   );
@@ -359,6 +362,7 @@ export function App() {
     setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
     if(tool==='select')setOpeningFocus(null);
+    if(drawingArchitecture && !wallDraft.length)setTool('select');
     setTool(current=>current==='door'||current==='window'||current==='opening-edit'||current==='wall-edit'||current==='outline-edit'?'select':current);
     editor.cancel();
     setRiverDraft([]);
@@ -367,7 +371,7 @@ export function App() {
       setRegionDraft([]);setWallDraft([]);
     setBuildingCorner(null);
     setInspectorEpoch((value) => value + 1);
-  }, [editor,tool]);
+  }, [editor,tool,drawingArchitecture,wallDraft.length]);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -398,6 +402,7 @@ export function App() {
   const finishOpeningEdit=()=>{editor.cancel();setTool('select');};
   const placementFloors=project.entities.filter((e):e is Level=>e.kind==='level'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&!project.entities.some(b=>b.kind==='building'&&b.id===e.buildingId&&!b.visible));
   const placementLevel=placementFloors.find(e=>e.id===selectedLevel?.id)??placementFloors[0];
+  const drawingLevel=placementFloors.find(e=>e.id===drawingLevelId);
   const openingHost=project.entities.find((e):e is Wall=>e.kind==='wall'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&e.id===openingFocus?.wallId&&e.parentId===placementLevel?.id&&!project.entities.some(unit=>unit.kind==='unit'&&!unit.visible&&unit.memberIds.includes(e.id)));
   const focusedOpening=openingHost?.openings?.find(o=>o.id===openingFocus?.openingId);
   const openingSettings:OpeningSettings={kind:tool==='door'?'door':'window',width:NaN,height:NaN,sill:NaN,snapping};
@@ -410,7 +415,7 @@ export function App() {
       const wall=committed.entities.find((e):e is Wall=>e.kind==='wall'&&e.id===wallId);
       const level=committed.entities.find((e):e is Level=>e.kind==='level'&&e.id===placementLevel?.id);
       if(!placingOpening||!wall||!level)return;
-      const result=openingAtPoint(wall,level,point,openingSettings,crypto.randomUUID());
+      const result=openingAtPoint(wall,level,point,openingSettings,crypto.randomUUID(),committed.entities.filter((e):e is Wall=>e.kind==='wall'));
       if(result.issue||!result.opening){setOpeningStatus(result.issue??'Choose a wall.');return;}
       editor.execute({type:'replace',entity:{...wall,openings:[...(wall.openings??[]),result.opening]}},'Place '+openingSettings.kind);
       editor.select(wall.id);
@@ -419,7 +424,8 @@ export function App() {
     });
     return placed;
   };
-  const chooseTool = (next: "select" | "terrain" | "building" | "wall" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region") => {
+  const chooseTool = (next: typeof tool) => {
+    if(drawingArchitecture&&wallDraft.length)setNotice('Unfinished drawing discarded. No geometry was added.');
     setCopyDraft(null);setSelectedParts([]);setOpeningFocus(null);
     editor.cancel();
     if (next !== "select" && (view === "shore" || view.endsWith("underwater"))) setView("perspective");
@@ -436,6 +442,23 @@ export function App() {
       setPanel("inspector");
     }
   };
+  const startArchitecture = (kind: ArchitectureTool, levelId?: string) => {
+    chooseTool(kind);
+    setDrawingLevelId(levelId ?? null);
+    setSurfaceOffset(kind==='roof'?3.4:0);
+    setSurfaceThickness(kind==='wall'?0.25:0.2);
+    setView('top');setPanel('inspector');
+  };
+  const chooseDrawingLevel = (id: string) => {
+    if(wallDraft.length)return;
+    setDrawingLevelId(id);editor.select(id);frame();
+  };
+  const addDrawingLevel = () => guard(() => {
+    if(wallDraft.length)return;
+    const level:Level={id:crypto.randomUUID(),kind:'level',parentId:'site',name:`Level ${project.entities.filter(e=>e.kind==='level').length+1}`,position:[0,0,0],rotation:0,visible:true,storeyHeight:3.4};
+    editor.execute({type:'add',entity:level},'Add blank level');
+    chooseDrawingLevel(level.id);
+  });
   const duplicateNext=()=>guard(()=>{
     if(state.gestureLabel)throw new Error('Finish or cancel the current edit first.');
     if(!selected||(selected.kind!=='level'&&selected.kind!=='unit'))return;
@@ -519,12 +542,14 @@ export function App() {
       );
     });
   const groundPoint = (x: number, z: number) => {
-    if(tool==='wall'&&selected?.kind==='level'){
-      guard(()=>{if(wallDraft.length>=16)throw new Error('Finish this chain with up to 16 corners.');
-        const angle=selected.rotation*Math.PI/180,dx=x-selected.position[0],dz=z-selected.position[2];
-        const point:PlanPoint=[dx*Math.cos(angle)-dz*Math.sin(angle),dx*Math.sin(angle)+dz*Math.cos(angle)];
-        const walls=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.parentId===selected.id&&e.joins===true);
-        const next=snapWallPoint(point,walls,wallDraft.at(-1));
+    if(drawingArchitecture){
+      if(!drawingLevel)return;
+      const point=drawingPoint(drawingLevel,x,z);
+      const walls=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.parentId===drawingLevel.id&&e.joins===true);
+      const next=snapping?snapWallPoint(point,walls,wallDraft.at(-1)):point;
+      if(wallDraft.length>=3&&Math.hypot(next[0]-wallDraft[0][0],next[1]-wallDraft[0][1])<0.2){finishArchitecture(true);return;}
+      guard(()=>{
+        if(wallDraft.length>=16)throw new Error('Finish this drawing with up to 16 corners.');
         if(wallDraft.length&&Math.hypot(next[0]-wallDraft.at(-1)![0],next[1]-wallDraft.at(-1)![1])<0.2)throw new Error('Choose a different corner or finish the chain.');
         setWallDraft([...wallDraft,next]);
       });return;
@@ -603,11 +628,13 @@ export function App() {
       depth,
     );
   };
-  const finishWalls=(closed:boolean)=>guard(()=>{
-    if(selected?.kind!=='level')return;
-    const entities=createWallChain(editor.getSnapshot().project,selected.id,wallDraft,closed);
-    if(!editor.getSnapshot().gestureLabel)editor.begin('Create wall chain');editor.preview({type:'insert',entities});
-    setTool('select');setWallDraft([]);setNotice('Wall chain preview ready. Apply changes to keep it.');
+  const finishArchitecture=(closed:boolean)=>guard(()=>{
+    if(!drawingLevel||!drawingArchitecture)return;
+    const entities=tool==='wall'
+      ? createWallChain(editor.getSnapshot().project,drawingLevel.id,wallDraft,closed,crypto.randomUUID(),false,surfaceThickness)
+      : [createDrawnSurface(tool,drawingLevel,wallDraft,surfaceOffset,surfaceThickness)];
+    editor.execute({type:'insert',entities},`Draw ${tool}`);
+    setWallDraft([]);setNotice(`${tool==='wall'?'Wall chain':tool==='floor'?'Floor':'Flat roof'} created. Click to draw another, or exit the tool to edit it.`);
   });
   const placeAsset = (asset: Asset, extraAssets: Asset[] = []) =>
     guard(() => {
@@ -926,21 +953,13 @@ export function App() {
           <span className="brand-symbol">
             <Mountain size={25} strokeWidth={1.6} />
           </span>
-          <span>
+          <span className="brand-wordmark">
             openlandcraft<span className="brand-dot">.</span>
           </span>
         </a>
         <div className="header-divider" />
-        <div className="project-title">
-          <button
-            className="project-name-button"
-            aria-label="Rename project"
-            onClick={() => setProjectDialog("rename")}
-          >
-            {state.project.name}
-          </button>
-          <span className="local-pill">LOCAL</span>
-        </div>
+        <ProjectName name={state.project.name} disabled={!!state.gestureLabel || opening || importingModel}
+          onRename={name => guard(() => editor.execute({type:'rename',name},'Rename project'))} />
         <div className="header-actions">
           <div className="history-buttons">
             <IconButton
@@ -1006,13 +1025,14 @@ export function App() {
       </header>
 
       <div className="workspace">
-        <WorkspaceSidebar name={state.project.name} mobileActive={panel==='scene'} onRename={()=>setProjectDialog('rename')}
+        <WorkspaceSidebar mobileActive={panel==='scene'}
           layers={<LayersPanel project={state.project} editor={editor} selectedIds={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]} isolatedId={state.isolatedLayerId} guard={guard} onSelectObjects={ids=>{select(ids[0]??null);setSelectedParts(ids);}}/>}
           objects={<SceneObjects project={project} selectedId={state.selectedId} selectedIds={selectedParts} editor={editor} onSelect={select} guard={guard} isolatedId={state.isolatedLayerId}/>}
           actions={<>
             <CreationMenu project={project} busy={!!state.gestureLabel} importingModel={importingModel}
               onAddBlock={addBlock} onAddBuilding={()=>addBuilding()}
               onDrawBuilding={()=>{chooseTool('building');setView('top');}}
+              onDrawArchitecture={kind=>startArchitecture(kind)}
               onRegions={()=>openRegions()} onWater={()=>openWaterSystem()}
               onAddPath={()=>addPath()} onDrawPath={()=>{chooseTool('path');setView('top');}}
               onAddOcean={addOcean} onDemoTree={()=>{void fetch("/models/openlandcraft-pine.glb")
@@ -1044,22 +1064,18 @@ export function App() {
         />
 
         <main className="stage" aria-label="3D editor">
-          <div className="stage-toolbar">
-            <div className="breadcrumb">
-              Projects <ChevronRight size={12} />
-              <strong>{state.project.name}</strong>
-            </div>
-            <span className="stage-title">
-              <span className="status-dot" />
-              Live scene
-            </span>
-          </div>
+          <ViewportToolbar view={view}
+            canShore={project.entities.some(entity => entity.kind === 'ocean' && entity.visible)} canDive={canDive}
+            onView={next => { if(next === 'shore' || next.endsWith('underwater')) chooseTool('select'); setView(next); }}
+            transform={tool === 'select' && selected?.visible && ['instance','level','block'].includes(selected.kind) ? transformMode : undefined}
+            canScale={selected?.kind === 'instance'} onTransform={mode => {editor.cancel();setTransformMode(mode);}}
+            snapping={snapping} onSnapping={setSnapping} />
           <div className={`viewport-area${view.endsWith('underwater')?' underwater-view':''}`}>
             <Viewport
               onCopyStatus={setNotice}
               onCopyPlaced={result=>{select(result.selectedIds[0]);if(result.focus)setOpeningFocus(result.focus);else if(result.selectedIds.length>1)setSelectedParts(result.selectedIds);}}
               selectedIds={selectedParts}
-              isolateLevelId={placingOpening||editingOpening||editingWall||editingOutline?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
+              isolateLevelId={drawingArchitecture?drawingLevel?.id:placingOpening||editingOpening||editingWall||editingOutline?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
               onOutlinePick={pickOutline}
               outlineEditing={editingOutline&&outlineTarget&&selectedLevel?{part:outlineTarget,level:selectedLevel,handle:outlineHandle,onHandle:setOutlineHandle,onStatus:setOutlineStatus}:undefined}
               onWallPick={pickWall}
@@ -1068,7 +1084,6 @@ export function App() {
               openingEditing={editingOpening&&placementLevel?{level:placementLevel,focus:focusedOpening?openingFocus:null,onSelect:focusOpening,onStatus:setOpeningStatus}:undefined}
               openingPlacement={placingOpening&&placementLevel?{level:placementLevel,settings:openingSettings,onStatus:setOpeningStatus,onPlace:placeOpening}:undefined}
               floorCopy={copyResult.plan}
-              copyAnchor={copyElement}
               copying={!!copyDraft}
               isolatedLayerId={state.isolatedLayerId}
               project={project}
@@ -1087,6 +1102,7 @@ export function App() {
               onStrokeTime={setStrokeTime}
               onGroundPoint={groundPoint}
               wallDraft={wallDraft}
+              architectureDrawing={drawingArchitecture&&drawingLevel?{level:drawingLevel,kind:tool,offset:tool==='wall'?0:surfaceOffset,thickness:surfaceThickness}:undefined}
               onError={setError}
               transformMode={transformMode}
               snapping={snapping}
@@ -1097,69 +1113,7 @@ export function App() {
               lakeDraftLevel={lakeDraft.length?createLake(project,lakeDraft).level:0}
               waterPreview={waterPreview}
             />
-            {tool==='select'&&selected?.visible&&(selected.kind==='level'||selected.kind==='unit')&&<div ref={copyElement} className="floor-copy-control" role="group" aria-label="Duplicate above controls">
-              <div className="copy-scope">{selected.kind==='unit'?'Selected unit':'Whole floor'}</div><strong>{selected.name}</strong>
-              <Field>Floor spacing <span><NumericInput aria-label="Copy floor spacing" min={0.5} max={30} step={0.1} value={copyHeight} disabled={!!state.gestureLabel} onChange={e=>{const value=Number(e.target.value);setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}}/> m</span></Field>
-              {copyDraft&&<p>Preview above · {copyResult.plan?.movedRoofIds.length?'top roof moves up':'independent copy'}. Each placement is one undo step.</p>}
-              {copyResult.error&&<p className="copy-error" role="alert">{copyResult.error}</p>}
-              <button disabled={!!state.gestureLabel||!!copyDraft&&!copyResult.plan} onClick={duplicateNext}><ArrowUp size={17}/>{copyDraft?'Place copy above':'Duplicate above'}</button>
-              {copyDraft&&<button className="copy-cancel" onClick={()=>setCopyDraft(null)}>Finish / cancel preview · Esc</button>}
-            </div>}
-            <div className="view-label">
-              <span className="view-label-icon">
-                <Layers size={15} />
-              </span>
-              <div>
-                <strong>
-                  {view === "perspective"
-                    ? "Perspective"
-                    : view === "shore"
-                      ? "Shore view"
-                      : view === "underwater" ? "Ocean underwater" : view==='river-underwater'?'River underwater':view==='lake-underwater'?'Lake underwater':"Top view"}
-                </strong>
-                <span>
-                  {view === "shore"
-                    ? "Surroundings preview / site edits in 3D"
-                    : "Concept study / meters"}
-                </span>
-              </div>
-            </div>
-            <div className="view-switch" role="group" aria-label="Camera view">
-              <button
-                aria-pressed={view === "perspective"}
-                className={view === "perspective" ? "chosen" : ""}
-                onClick={() => setView("perspective")}
-              >
-                3D
-              </button>
-              <button
-                aria-pressed={view === "top"}
-                className={view === "top" ? "chosen" : ""}
-                onClick={() => setView("top")}
-              >
-                Top
-              </button>
-              <button
-                disabled={
-                  !project.entities.some(
-                    (entity) => entity.kind === "ocean" && entity.visible,
-                  )
-                }
-                aria-pressed={view === "shore"}
-                className={view === "shore" ? "chosen" : ""}
-                onClick={() => {
-                  chooseTool("select");
-                  setView("shore");
-                }}
-              >
-                Shore
-              </button>
-              <button aria-pressed={view === 'underwater'} className={view === 'underwater' ? 'chosen' : ''}
-                disabled={!canDive}
-                onClick={()=>{chooseTool('select');setView('underwater');}} title="View beneath the ocean surface">
-                Dive
-              </button>
-            </div>
+
             <div className="viewport-tools">
               <IconButton
                 label="Selection tool"
@@ -1179,10 +1133,7 @@ export function App() {
               <IconButton label="Place door on wall" aria-pressed={tool==='door'} active={tool==='door'} onClick={()=>chooseTool('door')}><DoorOpen size={19}/></IconButton>
               <IconButton label="Place window on wall" aria-pressed={tool==='window'} active={tool==='window'} onClick={()=>chooseTool('window')}><PanelsTopLeft size={19}/></IconButton>
               <div className="tool-divider" />
-              <IconButton label="Add massing block" onClick={addBlock}>
-                <Plus size={20} />
-              </IconButton>
-              <IconButton label="Frame selection (F)" onClick={frame}>
+<IconButton label="Frame selection (F)" onClick={frame}>
                 <Focus size={19} />
               </IconButton>
               <div className="tool-divider" />
@@ -1194,48 +1145,7 @@ export function App() {
                 <Grid2X2 size={18} />
               </IconButton>
             </div>
-            {tool === "select" &&
-              selected &&
-              (selected.kind === "instance" ||
-                selected.kind === "level" ||
-                selected.kind === "block") && (
-                <div
-                  className="transform-tools"
-                  role="group"
-                  aria-label="Transform tools"
-                >
-                  {(
-                    [
-                      "translate",
-                      "rotate",
-                      ...(selected.kind === "instance" ? ["scale"] : []),
-                    ] as TransformMode[]
-                  ).map((mode) => (
-                    <button
-                      key={mode}
-                      aria-pressed={transformMode === mode}
-                      onClick={() => {
-                        editor.cancel();
-                        setTransformMode(mode);
-                      }}
-                    >
-                      {mode === "translate"
-                        ? "Move"
-                        : mode === "rotate"
-                          ? "Rotate"
-                          : "Scale"}
-                    </button>
-                  ))}
-                  <Field variant="checkbox">
-                    <CheckboxInput
-                      checked={snapping}
-                      onChange={(event) => setSnapping(event.target.checked)}
-                    />
-                    Snap
-                  </Field>
-                </div>
-              )}
-            {tool==='wall'&&<div className="building-hud river-hud" role="status"><span>{wallDraft.length} wall corners · fixed level plane</span><button disabled={wallDraft.length<2} onClick={()=>finishWalls(false)}>Preview open chain</button><button disabled={wallDraft.length<3} onClick={()=>finishWalls(true)}>Preview closed room</button><button disabled={!wallDraft.length} onClick={()=>setWallDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool('select')}>Cancel</button></div>}
+            {drawingArchitecture&&<div className="building-hud river-hud" role="status"><span>{tool==='wall'?'Wall':tool==='floor'?'Floor':'Roof'} · {drawingLevel?`${drawingLevel.name} · ${wallDraft.length} corners`:'Choose a drawing level in Properties'}</span><button disabled={!drawingLevel||wallDraft.length<(tool==='wall'?2:3)} onClick={()=>finishArchitecture(tool!=='wall')}>Finish {tool}</button><button onClick={()=>chooseTool('select')}>Exit tool</button></div>}
             {tool === "building" && (
               <div className="building-hud" role="status">
                 <Layers size={15} />
@@ -1279,65 +1189,12 @@ export function App() {
                 <button onClick={() => chooseTool("select")}>Cancel</button>
               </div>
             )}
-            <div className="scene-caption">
-              <span className="eyebrow">STUDY 001</span>
-              <h1>{state.project.name}</h1>
-              <p>Land, architecture, and planted models</p>
-            </div>
             <div className="north-marker">
               <span>N</span>
               <svg viewBox="0 0 32 42" aria-hidden="true">
                 <path d="M16 2 25 31 16 24 7 31Z" fill="#465348" />
                 <path d="M16 2v22l9 7Z" fill="#a1ac99" />
               </svg>
-            </div>
-            <div className="playback-bar">
-              <IconButton
-                disabled={!hasWater}
-                label={
-                  playing ? "Pause water animation" : "Play water animation"
-                }
-                onClick={() => setPlaying((value) => !value)}
-              >
-                {playing ? <Pause size={14} /> : <Play size={14} />}
-              </IconButton>
-              <span>{hasWater ? "Water study" : "No water surfaces"}</span>
-              <span className="playback-dot" />
-              <span className="playback-state">
-                {hasWater ? (playing ? "Playing" : "Paused") : "—"}
-              </span>
-              <SelectInput appearance="toolbar" side="top"
-                aria-label="Preview quality"
-                value={quality}
-                onValueChange={(value) =>
-                  setQuality(value as "low" | "high")
-                }
-              >
-                <SelectOption value="high">High quality</SelectOption>
-                <SelectOption value="low">Low quality</SelectOption>
-              </SelectInput>
-            </div>
-            <div className="navigation-hint">
-              {tool === "terrain" ? (
-                "Drag to sculpt · Esc cancels · Select tool to navigate"
-              ) : tool === "region" ? (
-                "Click boundary points · Finish closes the region · Esc clears draft"
-              ) : tool === "lake" ? (
-                "Click shoreline points · Finish closes the lake · Esc clears draft"
-              ) : tool === "path" ? (
-                "Click path points · Finish commits · Esc clears draft"
-              ) : tool === "river" ? (
-                "Click downstream points · Finish commits · Esc clears draft"
-              ) : tool === "building" ? (
-                "Click two footprint corners · Esc clears draft"
-              ) : view === "top" ? (
-                "Drag to pan · Scroll to zoom"
-              ) : (
-                <>
-                  Drag to orbit<span>·</span>Right-drag to pan<span>·</span>
-                  Scroll to zoom
-                </>
-              )}
             </div>
             {tool === "terrain" && (
               <div className="brush-hud">
@@ -1351,37 +1208,21 @@ export function App() {
               </div>
             )}
           </div>
-          <footer className="statusbar">
-            <span>
-              <span
-                className={`status-dot ${saveStatus === "Save failed" ? "warning" : ""}`}
-              />
-              {saveStatus}
-            </span>
-            <div>
-              <span>
-                {metrics ? `${metrics.fps} FPS` : "Starting renderer…"}
-              </span>
-              <span>WebGL 2</span>
-              <span>1 unit = 1 m</span>
-              <button
-                onClick={() => setShowHelp(true)}
-                aria-label="Show editor help"
-              >
-                ?
-              </button>
-            </div>
-          </footer>
+          <ViewportStatusBar saveStatus={saveStatus} fps={metrics?.fps} hasWater={hasWater}
+            playing={playing} onPlaying={() => setPlaying(value => !value)} quality={quality} onQuality={setQuality} onHelp={() => setShowHelp(true)} />
         </main>
 
         <InspectorPanel
           mobileActive={panel === "inspector"}
           editing={!!state.gestureLabel}
           selectionKey={focusedOpening?.id ?? state.selectedId ?? ''}
-          scope={placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
+          scope={drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
-          {!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
-          {outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+          {tool==='select' && selected?.visible && (selected.kind==='level'||selected.kind==='unit') && <DuplicateAbovePanel
+            spacing={copyHeight} busy={!!state.gestureLabel} preview={!!copyDraft} valid={!!copyResult.plan} movesRoof={!!copyResult.plan?.movedRoofIds.length} error={copyResult.error}
+            onSpacing={value=>{setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}} onDuplicate={duplicateNext} onFinish={()=>setCopyDraft(null)} />}
+          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
+          {drawingArchitecture ? <ArchitectureTools kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
             <PanelBody className="terrain-inspector">
               <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
               <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
@@ -1587,7 +1428,6 @@ export function App() {
             selected.kind !== "block" &&
             selected.kind !== "ocean" ? (
             <ConstructionInspector
-                onDrawWalls={()=>{chooseTool("wall");setView("top");}}
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}
               selected={selected}
               project={project}
@@ -1847,10 +1687,6 @@ export function App() {
                 Pick an object in the viewport or scene list to edit its
                 properties.
               </p>
-              <Button variant="ghost" className="text-button" onClick={addBlock}>
-                <Plus size={16} />
-                Add a block
-              </Button>
             </div>
           )}
         </InspectorPanel>

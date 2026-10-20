@@ -11,7 +11,7 @@ export function dragWall(wall: Wall, mode: WallDragMode, delta: PlanPoint, snapp
   const next = { ...wall, start: mode === 'end' ? wall.start : point(wall.start), end: mode === 'start' ? wall.end : point(wall.end) };
   const parsed = wallSchema.safeParse(next);
   if (!parsed.success || Math.hypot(next.end[0] - next.start[0], next.end[1] - next.start[1]) < 0.2) throw new Error('Keep wall endpoints within ±100 m and the wall at least 0.2 m long.');
-  const issue = architectureIssue([next]);
+  const issue = architectureIssue([{...next,junctions:undefined}]); // Full joined-scene validation happens in the command.
   if (issue) throw new Error(issue);
   return next;
 }

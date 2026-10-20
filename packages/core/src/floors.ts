@@ -1,5 +1,5 @@
 import { objectLayer } from './layers';
-import { footprint, sameCorner } from './architecture';
+import { footprint, sameCorner, remapWallJunctions } from './architecture';
 import type { BuildingPart, Entity, Level, Project, Unit, Wall } from './model';
 
 export const isBuildingPart = (e: Entity): e is BuildingPart => e.kind === 'wall' || e.kind === 'slab' || e.kind === 'roof';
@@ -76,7 +76,7 @@ export function duplicateAbove(project: Project, sourceId: string, height: numbe
   const map = new Map(content.map((p, i) => [p.id, `${prefix}-part-${i}`]));
   for (const roof of roofs) map.set(roof.id, roof.id); // Carry the top roof; never sandwich copies between storeys.
   const copied: BuildingPart[] = content.map(p => ({ ...structuredClone(p), id: map.get(p.id)!, parentId: target.id,
-    ...(p.kind === 'wall' ? { openings: p.openings?.map((o, i) => ({ ...o, id: `${prefix}-opening-${content.indexOf(p)}-${i}` })) } : {}) }));
+    ...(p.kind === 'wall' ? { junctions:remapWallJunctions(p,map), openings: p.openings?.map((o, i) => ({ ...o, id: `${prefix}-opening-${content.indexOf(p)}-${i}` })) } : {}) }));
   const movedRoofs = roofs.map(p => ({ ...p, parentId: target.id }));
   const movedRoofIds = roofs.map(p => p.id);
   const overlaps = (a: ReturnType<typeof partBounds>, b: ReturnType<typeof partBounds>) => [0, 1, 2].every(k => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]) > 0.001);

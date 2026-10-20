@@ -10,7 +10,7 @@ import { saveLocal, loadLocal, serializeProject, deserializeProject } from '@ope
 describe('terrain transactions and project migration', () => {
   it('migrates a version 1 project without changing objects or water settings', () => {
     const migrated = parseProject(legacy);
-    expect(migrated.version).toBe(14);
+    expect(migrated.version).toBe(15);
     expect(migrated.entities).toEqual(legacy.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity));
     expect(migrated.site.terrain.heights).toHaveLength(129 * 105);
     expect(Number.isFinite(groundHeight(0, 0, migrated.site))).toBe(true);

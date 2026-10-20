@@ -13,6 +13,7 @@ export const buttonVariants = cva(
         secondary: 'bg-raised text-ink hover:bg-input',
         outline: 'border-line bg-transparent text-ink hover:bg-raised',
         ghost: 'bg-transparent text-muted hover:bg-hover hover:text-ink',
+        toolbar: 'bg-transparent text-[var(--ui-toolbar-ink)] hover:bg-[var(--ui-toolbar-hover)] aria-pressed:bg-[var(--ui-toolbar-hover)] aria-pressed:font-semibold',
         destructive: 'border-line bg-transparent text-danger hover:bg-danger/10',
         link: 'bg-transparent text-accent underline-offset-4 hover:underline',
       },

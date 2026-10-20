@@ -30,7 +30,7 @@ export function InspectorPanel({ children, scope, selectionKey, mobileActive, ed
         <Row gap="none">
           <Button variant="ghost" size="icon" className="icon-button" title="Expand all sections" aria-label="Expand all property sections" onClick={() => sections.setAll(true)}><ChevronsUpDown size={15} /></Button>
           <Button variant="ghost" size="icon" className="icon-button" title="Collapse all sections" aria-label="Collapse all property sections" onClick={() => sections.setAll(false)}><ChevronsDownUp size={15} /></Button>
-          <Button variant="ghost" size="icon" ref={collapseButton} className="icon-button inspector-collapse-button" title="Collapse properties panel" aria-label="Collapse properties panel" onClick={() => togglePanel(true)}><PanelRightClose size={16} /></Button>
+          <Button variant="ghost" size="icon" ref={collapseButton} className="icon-button inspector-collapse-button max-[1000px]:hidden" title="Collapse properties panel" aria-label="Collapse properties panel" onClick={() => togglePanel(true)}><PanelRightClose size={16} /></Button>
         </Row>
       </PanelHeader>
       <div className="inspector-scroll" ref={scroll}><InspectorSectionsProvider value={sections.value}>{children}</InspectorSectionsProvider></div>

@@ -10,7 +10,7 @@ export function editOpening(wall: Wall, id: string, patch: Partial<Pick<Opening,
   const opening = { ...original, ...patch };
   if (!openingSchema.safeParse(opening).success) throw new Error('Use positive dimensions of 0.3–20 m, a sill of 0–20 m, and an offset of 0–200 m.');
   const updated = { ...wall, openings: wall.openings!.map(o => o.id === id ? opening : o) };
-  const issue = architectureIssue([updated]);
+  const issue = architectureIssue([{...updated,junctions:undefined}]); // The command validates all connected walls.
   if (issue) throw new Error(issue);
   return updated;
 }

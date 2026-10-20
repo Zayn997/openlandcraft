@@ -1,3 +1,4 @@
+import { remapWallJunctions } from './architecture';
 import { objectLayer } from './layers';
 import { applyCommand, type Command } from './editor';
 import { ownerLevel, isBuildingPart } from './floors';
@@ -96,6 +97,7 @@ export function pasteSelection(project: Project, clipboard: EditorClipboard, sel
     if ('position' in entity) entity.position = [entity.position[0] + worldShift[0], entity.position[1], entity.position[2] + worldShift[1]];
     if ('points' in entity) entity.points = entity.points.map(p => entity.kind === 'river' ? [p[0]+worldShift[0],p[1],p[2]!+worldShift[1]] : [p[0]+worldShift[0],p[1]+worldShift[1]]) as typeof entity.points;
     if (entity.kind === 'wall') {
+      entity.junctions = remapWallJunctions(entity,idMap);
       entity.openings = entity.openings?.map((o,i) => ({ ...o, id: entity.id + '-opening-' + i }));
       if (!idMap.has(source.parentId)) { entity.start = [entity.start[0]+shift[0],entity.start[1]+shift[1]]; entity.end = [entity.end[0]+shift[0],entity.end[1]+shift[1]]; }
     }

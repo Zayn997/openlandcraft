@@ -9,6 +9,41 @@ export function footprint(part: Slab | Roof): PlanPoint[] {
 }
 const cross = (a: PlanPoint, b: PlanPoint) => a[0] * b[1] - a[1] * b[0];
 const sub = (a: PlanPoint, b: PlanPoint): PlanPoint => [a[0] - b[0], a[1] - b[1]];
+const dot = (a: PlanPoint, b: PlanPoint) => a[0] * b[0] + a[1] * b[1];
+/** Centerline parameter; the authored endpoint remains on the host, while its solid ends at the face. */
+export function wallParameter(point: PlanPoint, wall: Wall): number {
+  const direction = sub(wall.end, wall.start);
+  return dot(sub(point, wall.start), direction) / dot(direction, direction);
+}
+function onInterior(point: PlanPoint, wall: Wall): boolean {
+  const t = wallParameter(point, wall), direction = sub(wall.end, wall.start);
+  return t > 1e-5 && t < 1 - 1e-5 && Math.abs(cross(direction, sub(point, wall.start))) / wallLength(wall) < 1e-5;
+}
+function related(a: Wall, b: Wall): boolean {
+  return [a.start,a.end].some(p=>sameCorner(p,b.start)||sameCorner(p,b.end)) || Object.values(a.junctions??{}).includes(b.id) || Object.values(b.junctions??{}).includes(a.id);
+}
+function joinHosts(wall: Wall, corner: PlanPoint, walls: Wall[]) {
+  const id=wall.junctions?.[sameCorner(corner,wall.start)?'start':'end'];
+  return wall.joins&&id ? walls.filter(w=>w.id===id&&w.joins&&w.id!==wall.id&&w.parentId===wall.parentId&&onInterior(corner,w)) : [];
+}
+/** Copy only connections whose hosts are in the copied scope; partial copies detach. */
+export function remapWallJunctions(wall:Wall, ids:Map<string,string>):Wall['junctions'] {
+  const entries=Object.entries(wall.junctions??{}).flatMap(([end,id])=>ids.has(id)?[[end,ids.get(id)!]]:[]);
+  return entries.length?Object.fromEntries(entries):undefined;
+}
+/** Removing/unjoining a host or deliberately moving a branch off it detaches that endpoint. */
+export function detachInvalidJunctions(entities:Entity[]):Entity[] {
+  return entities.map(e=>{
+    if(e.kind!=='wall'||!e.junctions)return e;
+    const junctions=Object.fromEntries(Object.entries(e.junctions).filter(([end,id])=>{
+      const host=entities.find((w):w is Wall=>w.kind==='wall'&&w.id===id);
+      return e.joins&&host?.joins&&host.parentId===e.parentId&&onInterior(e[end as 'start'|'end'],host);
+    }));
+    const next={...e};
+    if(Object.keys(junctions).length)next.junctions=junctions;else delete next.junctions;
+    return next;
+  });
+}
 export function outlineIssue(points: PlanPoint[]): string | null {
   if (points.length < 3 || points.length > 16) return 'Use 3–16 outline corners.';
   let area = 0;
@@ -42,41 +77,93 @@ export function replaceJoinedWall(entities: Entity[], previous: Wall, next: Wall
   let changed = true;
   while (changed) {
     changed = false;
-    for (const w of walls) if (!connected.has(w.id) && walls.some(n => connected.has(n.id) && [w.start,w.end].some(p => sameCorner(p,n.start)||sameCorner(p,n.end)))) { connected.add(w.id); changed = true; }
+    for (const w of walls) if (!connected.has(w.id) && walls.some(n => connected.has(n.id) && related(w,n))) { connected.add(w.id); changed = true; }
   }
-  const profile = joinChange&&next.joins || previous.height !== next.height || previous.thickness !== next.thickness || previous.elevation !== next.elevation;
-  return entities.map(entity => {
+  const profile = joinChange&&next.joins || previous.height !== next.height || previous.elevation !== next.elevation;
+  const result = entities.map(entity => {
     if (entity.id === previous.id) return next;
     if (entity.kind !== 'wall' || !connected.has(entity.id)) return entity;
     const move = (point: PlanPoint): PlanPoint => sameCorner(point, previous.start) ? next.start : sameCorner(point, previous.end) ? next.end : point;
-    return { ...entity, ...(joinChange?{joins:next.joins}:{}), ...(profile ? {height:next.height,thickness:next.thickness,elevation:next.elevation} : {}), start: move(entity.start), end: move(entity.end) };
+    return { ...entity, ...(joinChange?{joins:next.joins}:{}), ...(profile ? {height:next.height,elevation:next.elevation} : {}), start: move(entity.start), end: move(entity.end) };
   });
+  // Follow moved hosts at the original normalized position, including hosts whose corners moved above.
+  // Every constraint is evaluated against the original document, never an accumulated pointer preview.
+  const moved = new Map(result.filter((e): e is Wall=>e.kind==='wall').map(w=>[w.id,w]));
+  for(let pass=0;pass<walls.length;pass++) {
+    let progressed=false;
+    for(const wall of walls) {
+      if(wall.id===previous.id)continue;
+      const current=moved.get(wall.id)!;
+      const follow=(p:PlanPoint,end:'start'|'end'):PlanPoint=>{
+        const host=walls.find(w=>w.id===wall.junctions?.[end]&&onInterior(p,w));
+        if(!host)return current[end];
+        const replacement=moved.get(host.id)!, t=wallParameter(p,host);
+        return [replacement.start[0]+t*(replacement.end[0]-replacement.start[0]),replacement.start[1]+t*(replacement.end[1]-replacement.start[1])];
+      };
+      const start=follow(wall.start,'start'),end=follow(wall.end,'end');
+      if(!sameCorner(start,current.start)||!sameCorner(end,current.end)){
+        moved.set(wall.id,{...current,start,end});progressed=true;
+      }
+    }
+    if(!progressed)break;
+  }
+  return detachInvalidJunctions(result.map(e=>e.kind==='wall'?moved.get(e.id)!:e));
 }
 
 export function architectureIssue(entities: Entity[]): string | null {
   const walls = entities.filter((e): e is Wall => e.kind === 'wall');
   for (const wall of walls) {
+    for(const [end,id] of Object.entries(wall.junctions??{})) {
+      const host=walls.find(w=>w.id===id);
+      if(!wall.joins||!host?.joins||host.id===wall.id||host.parentId!==wall.parentId||!onInterior(wall[end as 'start'|'end'],host))return 'A wall junction must reference a joined wall on the same level, with its endpoint on the host centerline.';
+    }
     const length = wallLength(wall), openings = wall.openings ?? [], margin = Math.max(0.1, wall.thickness * 2);
+    const polygon=wallFootprint(wall,walls);
+    const usableStart=Math.max(0,polygon[0][0],polygon[3][0]), usableEnd=Math.min(length,polygon[1][0],polygon[2][0]);
     const ids = new Set<string>();
     for (const opening of openings) {
       if (ids.has(opening.id)) return 'Opening IDs must be unique within a wall.';
       ids.add(opening.id);
-      if (opening.offset < margin || opening.offset + opening.width > length - margin + 1e-6 || opening.sill + opening.height > wall.height - 0.1 + 1e-6) return 'The opening must fit inside its wall, clear of corners and the wall top. Move or resize the opening first.';
+      if (opening.offset < usableStart + margin - 1e-6 || opening.offset + opening.width > usableEnd - margin + 1e-6 || opening.sill + opening.height > wall.height - 0.1 + 1e-6) return 'The opening must fit inside its wall, clear of corners, junctions and the wall top. Move or resize the opening first.';
       if (opening.kind === 'door' && opening.sill !== 0) return 'Doors must start at the wall base.';
       for (const other of openings) if (other.id !== opening.id && opening.offset < other.offset + other.width + 0.1 - 1e-6 && opening.offset + opening.width + 0.1 > other.offset + 1e-6 && opening.sill < other.sill + other.height + 0.1 - 1e-6 && opening.sill + opening.height + 0.1 > other.sill + 1e-6) return 'Keep at least 0.1 m of wall between openings.';
     }
     if(wall.joins)for (const corner of [wall.start, wall.end]) {
       const neighbors = walls.filter(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && (sameCorner(w.start, corner) || sameCorner(w.end, corner)));
-      if (neighbors.length > 1) return 'A shared corner supports two walls. T junctions are not supported yet.';
+      const hosts=joinHosts(wall,corner,walls);
+      if (neighbors.length > 1 || hosts.length > 1 || hosts.length && neighbors.length) return 'A shared endpoint supports two walls. Connect an interior wall to the middle of one existing wall for a T junction.';
       for (const other of neighbors) {
         const away = sameCorner(corner, wall.start) ? wall.end : wall.start;
         const otherAway = sameCorner(corner, other.start) ? other.end : other.start;
         const a = sub(away, corner), b = sub(otherAway, corner);
         const cosine = (a[0] * b[0] + a[1] * b[1]) / (wallLength(wall) * wallLength(other));
         if (cosine > Math.cos(Math.PI / 6)+1e-8) return 'Joined wall angles must be at least 30°.';
-        const extension=wall.thickness/2*Math.sqrt(Math.max(0,(1+cosine)/(1-cosine)));
+        const cap=sameCorner(corner,wall.start)?[polygon[0],polygon[3]]:[polygon[1],polygon[2]],origin=sameCorner(corner,wall.start)?0:length;
+        const extension=Math.max(...cap.map(p=>Math.abs(p[0]-origin)));
         if(extension>Math.min(length,wallLength(other))*0.45) return 'The joined corner is too tight for this wall length and thickness.';
-        if (Math.abs(wall.elevation - other.elevation) > 1e-6 || Math.abs(wall.height - other.height) > 1e-6 || Math.abs(wall.thickness - other.thickness) > 1e-6) return 'Joined walls must share their height, base elevation, and thickness. Edit the wall chain profile together.';
+        if (Math.abs(wall.elevation - other.elevation) > 1e-6 || Math.abs(wall.height - other.height) > 1e-6) return 'Joined walls must share their height and base elevation; their thicknesses may differ.';
+      }
+      for(const host of hosts) {
+        if(Math.abs(wall.elevation-host.elevation)>1e-6||Math.abs(wall.height-host.height)>1e-6)return 'Joined walls must share their height and base elevation; their thicknesses may differ.';
+        const sine=Math.abs(cross(sub(wall.end,wall.start),sub(host.end,host.start)))/(length*wallLength(host));
+        if(sine<0.5-1e-6)return 'Interior wall joins must meet the host at an angle of at least 30°.';
+        const cap=sameCorner(corner,wall.start)?[polygon[0],polygon[3]]:[polygon[1],polygon[2]];
+        const dx=(wall.end[0]-wall.start[0])/length,dz=(wall.end[1]-wall.start[1])/length;
+        const contact=cap.map(p=>wallParameter([wall.start[0]+dx*p[0]-dz*p[1],wall.start[1]+dz*p[0]+dx*p[1]],host)*wallLength(host));
+        const lo=Math.min(...contact),hi=Math.max(...contact),hostLength=wallLength(host);
+        const hostPolygon=wallFootprint(host,walls),hostStart=Math.max(0,hostPolygon[0][0],hostPolygon[3][0]),hostEnd=Math.min(hostLength,hostPolygon[1][0],hostPolygon[2][0]);
+        if(lo<hostStart+0.1||hi>hostEnd-0.1)return 'Move the interior wall farther from the host corner.';
+        const away=sameCorner(corner,wall.start)?wall.end:wall.start,side=Math.sign(cross(sub(host.end,host.start),sub(away,host.start)));
+        for(const other of walls)if(other.id!==wall.id&&other.joins)for(const end of ['start','end'] as const) {
+          if(other.junctions?.[end]!==host.id)continue;
+          const otherAway=end==='start'?other.end:other.start;
+          if(Math.sign(cross(sub(host.end,host.start),sub(otherAway,host.start)))!==side)continue;
+          const poly=wallFootprint(other,walls),ends=end==='start'?[poly[0],poly[3]]:[poly[1],poly[2]],ol=wallLength(other),ox=(other.end[0]-other.start[0])/ol,oz=(other.end[1]-other.start[1])/ol;
+          const span=ends.map(p=>wallParameter([other.start[0]+ox*p[0]-oz*p[1],other.start[1]+oz*p[0]+ox*p[1]],host)*hostLength);
+          if(lo<Math.max(...span)-1e-6&&hi>Math.min(...span)+1e-6)return 'These interior wall connections overlap. Move them farther apart.';
+        }
+        if((host.openings??[]).some(o=>lo<o.offset+o.width+0.1&&hi>o.offset-0.1))return 'The wall junction would intersect a door or window. Move the connection or the opening.';
+        if(usableEnd-usableStart<0.2)return 'The wall is too short for this junction and thickness.';
       }
     }
   }
@@ -91,13 +178,19 @@ export function wallFootprint(wall: Wall, walls: Wall[]): PlanPoint[] {
   const length = wallLength(wall), dx = (wall.end[0] - wall.start[0]) / length, dz = (wall.end[1] - wall.start[1]) / length, half = wall.thickness / 2;
   const edge = (end: boolean, side: number): PlanPoint => {
     const corner = end ? wall.end : wall.start;
+    const host=joinHosts(wall,corner,walls)[0];
+    if(host) {
+      const hx=(host.end[0]-host.start[0])/wallLength(host),hz=(host.end[1]-host.start[1])/wallLength(host);
+      const localX=hx*dx+hz*dz,localY=-hx*dz+hz*dx;
+      if(Math.abs(localY)>1e-6) return [(end?length:0)+(end?-1:1)*host.thickness/(2*Math.abs(localY))+localX*side*half/localY,side*half];
+    }
     const neighbor = wall.joins&&walls.find(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && (sameCorner(w.start, corner) || sameCorner(w.end, corner)));
     if (!neighbor) return [end ? length : 0, side * half];
     const away = sameCorner(neighbor.start, corner) ? neighbor.end : neighbor.start;
     const nx = (away[0] - corner[0]) / wallLength(neighbor), nz = (away[1] - corner[1]) / wallLength(neighbor);
     const localX = nx * dx + nz * dz, localY = -nx * dz + nz * dx;
     if (Math.abs(localY) < 1e-6) return [end ? length : 0, side * half];
-    const offset = side * half * (localX + (end ? -1 : 1)) / localY;
+    const offset = side * (half * localX + (end ? -1 : 1) * neighbor.thickness / 2) / localY;
     return [(end ? length : 0) + offset, side * half];
   };
   return [edge(false, -1), edge(true, -1), edge(true, 1), edge(false, 1)];
@@ -106,16 +199,47 @@ export function wallFootprint(wall: Wall, walls: Wall[]): PlanPoint[] {
 export function snapWallPoint(point: PlanPoint, walls: Wall[], previous?: PlanPoint): PlanPoint {
   const nearest = walls.flatMap(w => [w.start, w.end]).sort((a,b)=>Math.hypot(...sub(a,point))-Math.hypot(...sub(b,point)))[0];
   if (nearest && Math.hypot(...sub(nearest, point)) <= 0.4) return [...nearest];
+  const targets=walls.map(w=>{
+    let t=wallParameter(point,w);
+    // Preserve a nearly orthogonal segment while snapping onto the host centerline.
+    if(previous)for(const axis of [0,1] as const) {
+      const span=w.end[axis]-w.start[axis];
+      if(Math.abs(point[axis]-previous[axis])>0.4||Math.abs(span)<1e-6)continue;
+      const aligned=(previous[axis]-w.start[axis])/span;
+      if(aligned>0&&aligned<1&&Math.hypot(w.start[0]+aligned*(w.end[0]-w.start[0])-point[0],w.start[1]+aligned*(w.end[1]-w.start[1])-point[1])<=w.thickness/2+0.4){t=aligned;break;}
+    }
+    const p:PlanPoint=[w.start[0]+t*(w.end[0]-w.start[0]),w.start[1]+t*(w.end[1]-w.start[1])];
+    return {t,p,distance:Math.hypot(...sub(p,point)),wall:w};
+  }).filter(hit=>hit.t>0&&hit.t<1&&hit.distance<=hit.wall.thickness/2+0.4).sort((a,b)=>a.distance-b.distance);
+  if(targets.length)return targets[0].p;
   const result: PlanPoint = point.map(v => Math.round(v * 4) / 4) as PlanPoint;
   if (previous) { if (Math.abs(result[0] - previous[0]) <= 0.4) result[0] = previous[0]; if (Math.abs(result[1] - previous[1]) <= 0.4) result[1] = previous[1]; }
   return result;
 }
-export function createWallChain(project: Project, parentId: string, points: PlanPoint[], closed: boolean, id: string = crypto.randomUUID()): Wall[] {
+export function createWallChain(project: Project, parentId: string, points: PlanPoint[], closed: boolean, id: string = crypto.randomUUID(), snapping = true, thickness?:number): Wall[] {
   const existing = project.entities.filter((e): e is Wall => e.kind === 'wall' && e.parentId === parentId && e.joins===true);
   const snapped: PlanPoint[] = [];
-  for (const point of points) snapped.push(snapWallPoint(point, existing, snapped.at(-1)));
+  for (const point of points) snapped.push(snapping ? snapWallPoint(point, existing, snapped.at(-1)) : [...point]);
   const count = closed ? snapped.length : snapped.length - 1;
   if (count < 1 || points.length > 16 || closed && points.length < 3) throw new Error('Use 2–16 points for a wall chain, or at least 3 for a closed room.');
-  const profile = existing.find(w => snapped.some(p=>sameCorner(p,w.start)||sameCorner(p,w.end)));
-  return Array.from({length:count},(_,i)=>({id:`${id}-${i}`,kind:'wall',joins:true,parentId,name:`Wall ${i+1}`,visible:true,color:'#e4ded1',start:snapped[i],end:snapped[(i+1)%snapped.length],height:profile?.height??3.2,thickness:profile?.thickness??0.25,elevation:profile?.elevation??0.2,openings:[]}));
+  const profile = existing.find(w => snapped.some(p=>sameCorner(p,w.start)||sameCorner(p,w.end)||onInterior(p,w)));
+  const created:Wall[]=Array.from({length:count},(_,i)=>({id:`${id}-${i}`,kind:'wall',joins:true,parentId,name:`Wall ${i+1}`,visible:true,color:'#e4ded1',start:snapped[i],end:snapped[(i+1)%snapped.length],height:profile?.height??3.2,thickness:thickness??profile?.thickness??0.25,elevation:profile?.elevation??0.2,openings:[]}));
+  const all=[...existing,...created];
+  for(const wall of created)for(const other of all) {
+    if(wall.id===other.id)continue;
+    const a=sub(wall.end,wall.start),b=sub(other.end,other.start),c=sub(other.start,wall.start),den=cross(a,b);
+    if(Math.abs(den)>1e-8) {
+      const t=cross(c,b)/den,u=cross(c,a)/den;
+      if(t>1e-5&&t<1-1e-5&&u>1e-5&&u<1-1e-5)throw new Error('Crossing walls are not supported. Finish the interior wall on the existing wall instead.');
+    } else if(Math.abs(cross(a,c))<1e-8) {
+      const lo=Math.min(wallParameter(other.start,wall),wallParameter(other.end,wall)),hi=Math.max(wallParameter(other.start,wall),wallParameter(other.end,wall));
+      if(Math.min(1,hi)-Math.max(0,lo)>1e-5)throw new Error('This wall overlaps an existing wall. Draw from its endpoint or connect to its side.');
+    }
+  }
+  for(const wall of created)for(const end of ['start','end'] as const) {
+    const hosts=all.filter(host=>host.id!==wall.id&&onInterior(wall[end],host));
+    if(hosts.length>1)throw new Error('Choose a single host wall for this connection.');
+    if(hosts[0])wall.junctions={...wall.junctions,[end]:hosts[0].id};
+  }
+  return created;
 }

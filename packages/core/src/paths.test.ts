@@ -10,8 +10,8 @@ const site = () => createSite({ name: 'Path test', width: 60, depth: 48, resolut
 describe('path authoring and compatibility', () => {
   it('migrates version 8 without changing water, terrain or source entities', () => {
     const source = structuredClone(legacy), current = parseProject(legacy);
-    expect(current).toEqual({...source,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
-    expect(() => parseProject({ ...current, version: 15 })).toThrow();
+    expect(current).toEqual({...source,version:15,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
+    expect(() => parseProject({ ...current, version: 16 })).toThrow();
     expect(() => parseProject({ ...source, entities: [...source.entities, createPath(current)] })).toThrow();
   });
   it('rejects unsupported geometry, modes and second paths atomically', () => {

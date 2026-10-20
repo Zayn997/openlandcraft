@@ -18,12 +18,24 @@ describe('architectural solids',()=>{
     geometry.dispose();
   });
   it('shares exact inner and outer miter corners at a right angle and an oblique angle',()=>{
-    for(const angle of [Math.PI/2,Math.PI/3,Math.PI*0.8]){
-      const a={...wall,joins:true,openings:[]},b:Wall={...a,id:'b',start:[8,0],end:[8+8*Math.cos(angle),8*Math.sin(angle)]};
+    for(const angle of [Math.PI/2,Math.PI/3,Math.PI*0.8])for(const thickness of [0.15,0.3,0.6]){
+      const a={...wall,joins:true,openings:[]},b:Wall={...a,id:'b',thickness,start:[8,0],end:[8+8*Math.cos(angle),8*Math.sin(angle)]};
       const pa=wallFootprint(a,[a,b]).slice(1,3),pb=wallFootprint(b,[a,b]);
       const world=(p:[number,number])=>[8+p[0]*Math.cos(angle)-p[1]*Math.sin(angle),p[0]*Math.sin(angle)+p[1]*Math.cos(angle)];
       for(const p of pa)expect([world(pb[0]),world(pb[3])].some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<1e-6)).toBe(true);
     }
+  });
+  it('builds a thin partition flush to a thicker host without filling its window',()=>{
+    const host={...wall,joins:true,thickness:0.4};
+    const branch:Wall={...host,id:'partition',start:[3,4],end:[3,0],thickness:0.15,openings:[],junctions:{end:host.id}};
+    const walls=[host,branch],geometry=buildWallGeometry(branch,walls);geometry.computeBoundingBox();
+    expect(geometry.boundingBox!.min.z).toBeCloseTo(0.2,6);
+    expect(geometry.boundingBox!.max.z).toBeCloseTo(4,6);
+    expect(geometry.boundingBox!.min.x).toBeCloseTo(2.925,6);
+    expect(Array.from(geometry.getAttribute('position').array).every(Number.isFinite)).toBe(true);
+    const hostGeometry=buildWallGeometry(host,walls),mesh=new THREE.Mesh(hostGeometry,new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+    expect(hits(mesh,5,1.6)).toBe(0);expect(hits(mesh,3,1.6)).toBeGreaterThan(0);
+    geometry.dispose();hostGeometry.dispose();
   });
   it('leaves the concave floor notch empty and uses the same outline for flat roofs',()=>{
     const p=createSite({name:'Test',width:40,depth:40,resolution:129,preset:'flat'}),slab=createBuilding(p,0,0).find((e):e is Slab=>e.kind==='slab')!;

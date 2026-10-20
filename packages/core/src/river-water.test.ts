@@ -6,7 +6,7 @@ import { deserializeProject,serializeProject,saveLocal,loadLocal } from '@openla
 
 describe('river engine authoring',()=>{
   it('migrates version 7 while preserving the full source scene',()=>{
-    const before=structuredClone(legacy),project=parseProject(legacy);expect(project.version).toBe(14);expect(legacy).toEqual(before);
+    const before=structuredClone(legacy),project=parseProject(legacy);expect(project.version).toBe(15);expect(legacy).toEqual(before);
     expect(project.site).toEqual(legacy.site);expect(project.assets).toEqual(legacy.assets);
     expect(project.entities).toEqual(legacy.entities.map(e=>e.kind==='river'?{...e,water:RIVER_WATER_DEFAULTS}:e));
   });

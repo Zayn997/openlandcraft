@@ -14,6 +14,7 @@ type Props = {
   onAddBlock: () => void;
   onAddBuilding: () => void;
   onDrawBuilding: () => void;
+  onDrawArchitecture: (kind: 'wall' | 'floor' | 'roof') => void;
   onRegions: () => void;
   onWater: () => void;
   onAddPath: () => void;
@@ -26,7 +27,7 @@ type Props = {
 
 /** Editor commands remain in App; this component only presents the creation menu. */
 export function CreationMenu({
-  project, busy, importingModel, onAddBlock, onAddBuilding, onDrawBuilding,
+  project, busy, importingModel, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
   onRegions, onWater, onAddPath, onDrawPath, onAddOcean, onDemoTree, onPlaceAsset, onRemoveAsset,
 }: Props) {
   const hasPath = project.entities.some(entity => entity.kind === 'path');
@@ -38,6 +39,9 @@ export function CreationMenu({
     <DropdownMenuContent side="top" align="start" className="w-[264px]" aria-label="Add to scene">
       <DropdownMenuGroup>
         <DropdownMenuLabel>Architecture</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('wall')}><MousePointer2 />Wall</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><Layers />Floor</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><Focus />Roof</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBlock}><Box />Add massing block</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBuilding}><Layers />Add building</DropdownMenuItem>
         <DropdownMenuItem onSelect={onDrawBuilding}><Focus />Draw footprint</DropdownMenuItem>

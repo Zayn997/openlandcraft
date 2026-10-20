@@ -1,7 +1,7 @@
-import { Button, CheckboxInput, Field, FieldGrid, FieldMessage, NumberField, Row } from './ui';
+import { Button, FieldGrid, FieldMessage, NumberField, Row } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { useState } from 'react';
-import { createWallChain, footprint, wallLength, type Editor, type Level, type Opening, type PlanPoint, type Roof, type Slab, type Wall } from '@openlandcraft/core';
+import { footprint, wallLength, type Opening, type PlanPoint, type Roof, type Slab, type Wall } from '@openlandcraft/core';
 
 function PointList({points,onChange}:{points:PlanPoint[];onChange:(points:PlanPoint[])=>void}) {
   return <>{points.map((p,i)=><div className="architecture-point" key={i}><span>{i+1}</span>{p.map((v,k)=><NumberField key={k} label={`Corner ${i+1} ${k===0?'X':'Z'}`} value={v} min={-100} max={100} onChange={next=>onChange(points.map((q,j)=>j===i?q.map((n,l)=>l===k?next:n) as PlanPoint:q))}/>)}<button type="button" aria-label={`Remove corner ${i+1}`} disabled={points.length<=2} onClick={()=>onChange(points.filter((_,j)=>i!==j))}>×</button></div>)}<button type="button" className="add-object" disabled={points.length>=16} onClick={()=>{const p=points.at(-1)??[0,0];onChange([...points,[Math.min(100,p[0]+2),p[1]]]);}}>Add corner</button></>;
@@ -35,22 +35,4 @@ export function OutlineFields({part,change}:{part:Slab|Roof;change:(patch:object
     <details><summary>Edit outline corners</summary><PointList points={points} onChange={setPoints}/><button type="button" className="add-object" onClick={()=>change({outline:points})}>Preview outline</button></details>
     {part.outline&&<Button variant="ghost" type="button" className="cancel-button" onClick={()=>change({outline:undefined})}>Restore rectangle</Button>}
   </InspectorSection>;
-}
-
-export function WallChainFields({level,editor,guard}:{level:Level;editor:Editor;guard:(run:()=>void)=>void}) {
-  const [points,setPoints]=useState<PlanPoint[]>([[-3,-2],[3,-2],[3,2],[-3,2]]),[closed,setClosed]=useState(true);
-  const [chainId]=useState(()=>crypto.randomUUID());
-  const preview=()=>guard(()=>{
-    const state=editor.getSnapshot();
-    const walls=createWallChain(state.project,level.id,points,closed,chainId);
-    if(!state.gestureLabel)editor.begin('Create wall chain');
-    editor.preview({type:'insert',entities:walls});
-  });
-  const active=editor.getSnapshot().gestureLabel;
-  return <InspectorSection sectionId="architecturefields-wall-chain" title={<>Wall chain</>} defaultOpen={false}><details><summary>Draw with level coordinates</summary>
-    <FieldMessage>2–16 corners. Points snap to wall endpoints within 0.4 m, then a 0.25 m grid and nearby X/Z alignment. Existing corner profiles are inherited.</FieldMessage>
-    <PointList points={points} onChange={setPoints}/><Field variant="checkbox"><CheckboxInput checked={closed} onChange={e=>setClosed(e.target.checked)}/>Close room</Field>
-    <button type="button" className="add-object" disabled={!!active&&active!=='Create wall chain'} onClick={preview}>Preview wall chain</button>
-    <FieldMessage>Use Apply changes above to keep the chain, or Cancel preview. Joined endpoints move together. T junctions are deferred.</FieldMessage>
-  </details></InspectorSection>;
 }

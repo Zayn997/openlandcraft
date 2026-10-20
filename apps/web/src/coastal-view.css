@@ -1,6 +1,5 @@
 @media (max-width: 760px) {
-  .view-switch button { min-width: 44px; min-height: 44px; }
-  .view-switch { padding: 3px; }
-  .view-label { top: 26px; }
-  .viewport-tools { top: 77px; }
+  .viewport-tools { top: 12px; padding: 3px; gap: 1px; max-height: calc(100% - 24px); overflow-y: auto; scrollbar-width: thin; }
+  .viewport-tools .icon-button { min-height: 40px; width: 40px; }
+  .viewport-tools .tool-divider { display: none; }
 }

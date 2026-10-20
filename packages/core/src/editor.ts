@@ -1,5 +1,5 @@
 import { canEditObject, objectLayer, objectOwners, layerState, type Layer } from './layers';
-import {replaceJoinedWall} from './architecture';
+import {replaceJoinedWall,detachInvalidJunctions} from './architecture';
 import {duplicateAbove} from './floors';
 import { parseProject, type Entity, type Project } from './model';
 import {detachedInstance,plantingInstanceChanged,regeneratePlanting} from './regions';
@@ -118,6 +118,7 @@ export function applyCommand(project: Project, command: Command): Project {
       if(target?.kind==='building')project.entities.forEach(e=>{if(e.kind==='level'&&e.buildingId===target.id)removed.add(e.id);});
       project.entities.forEach(e=>{if(removed.has(e.parentId)||e.kind==='instance'&&e.regionId&&removed.has(e.regionId))removed.add(e.id);});
       candidate = { ...project, entities: project.entities.filter(e=>!removed.has(e.id)).map(e=>e.kind==='unit'?{...e,memberIds:e.memberIds.filter(id=>!removed.has(id))}:e).filter(e=>e.kind!=='unit'||e.memberIds.length) };
+      candidate.entities=detachInvalidJunctions(candidate.entities);
       break;
     }
     case 'rename': candidate = { ...project, name: command.name }; break;

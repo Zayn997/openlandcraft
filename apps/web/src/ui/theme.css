@@ -49,6 +49,8 @@
     --ui-panel-gutter: 14px;
     --ui-toolbar-ink: #536348;
     --ui-toolbar-hover: #53634812;
+    --ui-toolbar-surface: #eff0e7;
+    --ui-toolbar-line: #d5ddca;
   }
   @media (max-width: 760px) { :root { --ui-panel-gutter: 16px; } }
   @media (max-width: 520px) { :root { --ui-control-height: 40px; --ui-control-text: 16px; } }

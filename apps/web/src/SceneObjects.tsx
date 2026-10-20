@@ -3,11 +3,14 @@ import { useMemo, useState } from 'react';
 import { Box, ChevronDown, ChevronRight, Eye, EyeOff, Layers, Leaf, LockKeyhole, Mountain, Route, Search, Waves } from 'lucide-react';
 import { canEditObject, objectLayerState, type Editor, type Entity, type Project } from '@openlandcraft/core';
 
+import { InlineRename } from './InlineRename';
+
 export function SceneObjects({ project, selectedId, selectedIds=[], editor, onSelect, guard, isolatedId }: {
   project:Project; selectedId:string|null; selectedIds?:string[]; editor:Editor; onSelect:(id:string,additive?:boolean)=>void; guard:(run:()=>void)=>unknown; isolatedId:string|null;
 }) {
   const [expanded,setExpanded]=useState<Set<string>>(()=>new Set(['site']));
   const [query,setQuery]=useState('');
+  const [renaming,setRenaming]=useState<string|null>(null);
   const entities=project.entities;
   const children=useMemo(()=>{
     const map=new Map<string,Entity[]>(),members=new Map(entities.flatMap(e=>e.kind==='unit'?e.memberIds.map(id=>[id,e.id] as const):[]));
@@ -23,7 +26,7 @@ export function SceneObjects({ project, selectedId, selectedIds=[], editor, onSe
     return <div key={e.id} role="treeitem" aria-level={depth+2} aria-expanded={owned.length?open:undefined} aria-selected={selectedIds.includes(e.id)||selectedId===e.id}>
       <TreeRow className="object-row" depth={depth} selected={selectedIds.includes(e.id)||selectedId===e.id}>
         <button className="layer-chevron" disabled={!owned.length} aria-label={(open?'Collapse ':'Expand ')+e.name} onClick={()=>toggle(e.id)}>{owned.length>0&&(open?<ChevronDown size={13}/>:<ChevronRight size={13}/>)}</button>
-        <button className="object-select" disabled={!selectable} title={status.locked?'Locked by layer':!status.visible?'Hidden by layer':e.name} onClick={event=>onSelect(e.id,event.shiftKey)}><Icon size={14}/><span>{e.name}</span>{status.locked&&<LockKeyhole size={12}/>}</button>
+        <div className="object-name-cell">{renaming===e.id?<><Icon size={14}/><InlineRename name={e.name} label="Object name" onSave={name=>guard(()=>{editor.cancel();const current=editor.getSnapshot().project.entities.find(item=>item.id===e.id);if(current)editor.execute({type:'replace',entity:{...current,name}},'Rename '+current.name);})} onClose={()=>setRenaming(null)}/></>:<button className="object-select" disabled={!selectable} title={status.locked?'Locked by layer':!status.visible?'Hidden by layer':e.name} onClick={event=>onSelect(e.id,event.shiftKey)} onDoubleClick={()=>setRenaming(e.id)} onKeyDown={event=>{if(event.key==='F2'){event.preventDefault();event.stopPropagation();setRenaming(e.id);}}}><Icon size={14}/><span>{e.name}</span>{status.locked&&<LockKeyhole size={12}/>}</button>}</div>
         <button disabled={!selectable} aria-label={(e.visible?'Hide ':'Show ')+e.name} title={(e.visible?'Hide ':'Show ')+e.name} onClick={()=>guard(()=>{editor.cancel();editor.execute({type:'replace',entity:{...e,visible:!e.visible}},'Toggle '+e.name);})}>{e.visible&&status.visible?<Eye size={14}/>:<EyeOff size={14}/>}</button>
       </TreeRow>
       {open&&owned.length>0&&<div role="group">{owned.map(child=>row(child,depth+1))}</div>}
