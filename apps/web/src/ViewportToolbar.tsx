@@ -1,7 +1,7 @@
-import type { TransformMode } from '@openlandcraft/viewport';
+import type { CameraView, TransformMode } from '@openlandcraft/viewport';
 import { Button, CheckboxInput, Field, Row, SelectInput, SelectOption } from './ui';
 
-export type CameraView = 'perspective' | 'top' | 'shore' | 'underwater' | 'river-underwater' | 'lake-underwater';
+export type { CameraView } from '@openlandcraft/viewport';
 
 export function ViewportToolbar({ view, canShore, canDive, onView, transform, canScale, onTransform, snapping, onSnapping }: {
   view: CameraView; canShore: boolean; canDive: boolean; onView: (view: CameraView) => void;
@@ -12,6 +12,11 @@ export function ViewportToolbar({ view, canShore, canDive, onView, transform, ca
     <SelectInput appearance="toolbar" aria-label="Camera view" value={view} onValueChange={value => onView(value as CameraView)} className="max-w-40 shrink-0">
       <SelectOption value="perspective">Perspective</SelectOption>
       <SelectOption value="top">Top</SelectOption>
+      <SelectOption value="front">Front</SelectOption>
+      <SelectOption value="back">Back</SelectOption>
+      <SelectOption value="left">Left</SelectOption>
+      <SelectOption value="right">Right</SelectOption>
+      <SelectOption value="bottom">Bottom</SelectOption>
       <SelectOption value="shore" disabled={!canShore}>Shore</SelectOption>
       <SelectOption value="underwater" disabled={!canDive}>Ocean underwater</SelectOption>
       {view === 'river-underwater' && <SelectOption value="river-underwater">River underwater</SelectOption>}

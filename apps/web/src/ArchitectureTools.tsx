@@ -32,7 +32,7 @@ export function ArchitectureTools({ kind, levels, level, count, offset, thicknes
       {kind === 'wall' && <Button disabled={!level || count < 3} onClick={() => onFinish(true)}>Close room</Button>}
     </Row>
     <Row className="part-buttons"><Button variant="outline" disabled={!count} onClick={onBack}>Back one point</Button><Button variant="ghost" disabled={!count} onClick={onCancel}>Cancel drawing</Button></Row>
-    <FieldMessage>Each finished drawing is one undo step. Escape cancels a draft; Escape again exits. Click the first corner to close an outline.</FieldMessage>
+    <FieldMessage>Each finished drawing is one undo step. Escape cancels the draft and exits the tool. Click the first corner to close an outline.</FieldMessage>
     <Button variant="outline" onClick={onExit}>Exit {label.toLowerCase()} tool</Button>
   </Panel>;
 }

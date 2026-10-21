@@ -3,6 +3,9 @@ import {DragCopy, type CopyResult} from './drag-copy';
 import { TerrainClosure } from './terrain-solid';
 import {OutlineEdit, type OutlineEditProps} from './outline-edit';
 import { cameraFlight } from './camera-flight';
+import { orbitPosition, orientationPosition, type CameraView, type OrientationView } from './navigation';
+import { ViewNavigator, type NavigationBridge } from './view-navigator';
+export type { CameraView } from './navigation';
 import {WallEdit, type WallEditProps} from './wall-edit';
 import {OpeningSelection, type OpeningSelectionProps} from './opening-selection';
 import {OpeningEdit, type OpeningEditProps} from './opening-edit';
@@ -50,7 +53,7 @@ type Props = {
   outlineEditing?: OutlineEditProps;
   openingEditing?: Omit<OpeningEditProps, 'walls'|'editor'|'snapping'|'topView'>;
   grid: boolean; playing: boolean; quality: 'low' | 'high';
-  view: 'perspective' | 'top' | 'shore' | 'underwater' | 'river-underwater' | 'lake-underwater'; frameToken: number; frameCancelToken: number;
+  view: CameraView; onNavigationView: (view: CameraView) => void; frameToken: number; frameCancelToken: number;
   onMetrics: (metrics: ViewportMetrics) => void;
   editor: Editor; tool: 'select' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
   onStrokeTime: (milliseconds: number) => void;
@@ -220,13 +223,44 @@ function Massing({ entity, selected, onSelect, blockOpeningEdit=false }: { block
   </group>;
 }
 
-function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, tool, openingEditing, openingSelection }: Props) {
+function CameraRig({ project, selectedId, view, onNavigationView, frameToken, frameCancelToken, tool, openingEditing, openingSelection, navigation }: Props & { navigation: React.RefObject<NavigationBridge> }) {
   const { camera, controls, size, gl } = useThree();
   type Orbit = { target: THREE.Vector3; update: () => void; enableDamping: boolean };
   const flight = useRef<{ sample: ReturnType<typeof cameraFlight>; elapsed: number; duration: number; orbit: Orbit; damping: boolean } | null>(null);
   const initialized = useRef(false);
+  const navigationView = useRef<{ view: CameraView; frameToken: number } | null>(null);
   const stopFlight = () => { const active = flight.current; flight.current = null; if (active) active.orbit.enableDamping = active.damping; };
   useLayoutEffect(() => { stopFlight(); }, [frameCancelToken]);
+  useLayoutEffect(() => {
+    const orbit = controls as unknown as Orbit | null;
+    if (!orbit) return;
+    const changeView = (next: CameraView) => {
+      if (next !== view) { navigationView.current = { view: next, frameToken }; onNavigationView(next); }
+    };
+    const drain = () => {
+      stopFlight();
+      const damping = orbit.enableDamping;
+      orbit.enableDamping = false; orbit.update();
+      return damping;
+    };
+    navigation.current.stop = stopFlight;
+    navigation.current.snap = next => {
+      const damping = drain();
+      const destination = orientationPosition(next, orbit.target, camera.position.distanceTo(orbit.target));
+      changeView(next);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        camera.position.copy(destination); camera.lookAt(orbit.target); orbit.update(); orbit.enableDamping = damping;
+      } else flight.current = { sample: cameraFlight(camera.position, orbit.target, destination, orbit.target), elapsed: 0, duration: 0.35, orbit, damping };
+    };
+    navigation.current.rotate = (dx, dy) => {
+      const damping = drain();
+      camera.position.copy(orbitPosition(camera.position, orbit.target, dx, dy));
+      camera.lookAt(orbit.target); orbit.update(); orbit.enableDamping = damping;
+      changeView('perspective');
+    };
+    return () => { delete navigation.current.snap; delete navigation.current.rotate; delete navigation.current.stop; };
+  }, [camera, controls, view, frameToken, onNavigationView, navigation]);
+  useFrame(() => { navigation.current.sync?.(camera.quaternion); });
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') stopFlight(); };
     gl.domElement.addEventListener('pointerdown', stopFlight, true);
@@ -252,6 +286,9 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
   useEffect(() => {
     const orbit = controls as unknown as Orbit | null;
     if (!orbit) return;
+    const navigated = navigationView.current;
+    navigationView.current = null;
+    if (navigated?.view === view && navigated.frameToken === frameToken) return;
     let target = new THREE.Vector3(-4, 1, 0);
     const aspectFit = Math.max(1, 1.25 / (size.width / size.height));
     let distance = 78 * Math.max(project.site.width / 90, project.site.depth / 72) * aspectFit;
@@ -306,7 +343,7 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
       const pose=underwaterCamera(project.site,ocean,project.entities.filter(e=>e.kind==='lake'))??shoreCamera(project.site,ocean);target.set(...pose.target);destination.set(...pose.position);
     } else if (view === 'shore' && ocean?.kind === 'ocean') {
       const pose=shoreCamera(project.site,ocean); target.set(...pose.target); destination.set(...pose.position);
-    } else destination.copy(target).add(view === 'top' ? new THREE.Vector3(0, distance, 0.01) : new THREE.Vector3(distance * 0.73, distance * 0.67, distance * 0.95));
+    } else destination.copy(orientationPosition(view === 'shore' || view.endsWith('underwater') ? 'perspective' : view as OrientationView, target, view === 'perspective' ? distance * Math.hypot(0.73, 0.67, 0.95) : distance));
     stopFlight();
     if (initialized.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const damping = orbit.enableDamping;
@@ -319,7 +356,9 @@ function CameraRig({ project, selectedId, view, frameToken, frameCancelToken, to
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, controls, view, frameToken, project.site.width, project.site.depth]);
   const drawing = tool === 'wall' || tool === 'floor' || tool === 'roof';
-  return <OrbitControls enabled={drawing || tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} maxPolarAngle={Math.PI * 0.95} enableRotate={view !== 'top'} mouseButtons={{ LEFT: drawing ? undefined : view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
+  return <OrbitControls enabled={drawing || tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} maxPolarAngle={Math.PI} enableRotate={view !== 'top'} onStart={() => {
+    if (['front', 'back', 'left', 'right', 'bottom'].includes(view)) { navigationView.current = { view: 'perspective', frameToken }; onNavigationView('perspective'); }
+  }} mouseButtons={{ LEFT: drawing ? undefined : view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
 }
 
 function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
@@ -343,6 +382,7 @@ function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
 }
 
 export function Viewport(authored: Props) {
+  const navigation = useRef<NavigationBridge>({});
   const project = useMemo(() => layerDisplayProject(evaluateProject(authored.project), authored.isolatedLayerId), [authored.project, authored.isolatedLayerId]);
   const editable = (id:string) => canEditObject(authored.project,id,authored.isolatedLayerId);
   const props = { ...authored, project, onSelect:(id:string|null,additive=false)=>{if(!id||editable(id))authored.onSelect(id,additive);},
@@ -399,7 +439,7 @@ export function Viewport(authored: Props) {
           {props.tool==='select'&&props.floorCopy&&<FloorCopyGhost copy={props.floorCopy}/>}
           {props.tool==='select'&&selected&&(selected.kind==='unit'||selected.kind==='level')&&props.copyAnchor&&<FloorCopyAnchor project={props.project} id={selected.id} element={props.copyAnchor}/>}
           {props.grid && <gridHelper args={[Math.max(project.site.width, project.site.depth) * 1.33, Math.ceil(Math.max(project.site.width, project.site.depth) / 4), '#b1b9aa', '#cdd1c2']} position={[0, -12.1, 0]} userData={{waterCaptureExclude:true}} />}
-          <CameraRig {...props} />
+          <CameraRig {...props} navigation={navigation} />
           <DragCopy editor={props.editor} enabled={!props.copying&&['select','wall-edit','outline-edit','opening-edit'].includes(props.tool)} selectedId={props.selectedId} selectedIds={props.selectedIds??[]} snapping={props.snapping} onPlaced={props.onCopyPlaced} onStatus={props.onCopyStatus}/>
           {props.tool === 'select' && !props.copying && selected?.visible && (selected.kind === 'block' || selected.kind === 'instance' || selected.kind === 'level') && <group userData={{waterCaptureExclude:true,copyEntityId:selected.id}}><TransformGizmo onError={props.onError} key={selected.id} entity={selected} project={props.project} editor={props.editor} mode={props.transformMode} snapping={props.snapping} /></group>}
           <Metrics onMetrics={props.onMetrics} />
@@ -409,6 +449,7 @@ export function Viewport(authored: Props) {
           </WaterOptics>
         </Suspense>
       </Canvas>
+      <ViewNavigator bridge={navigation} />
     </div>
   </CanvasBoundary>;
 }

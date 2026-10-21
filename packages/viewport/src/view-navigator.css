@@ -1,0 +1,40 @@
+.view-navigator {
+  position: absolute; top: 12px; right: 12px; width: 144px; z-index: 2;
+  color: var(--ui-toolbar-ink); cursor: default; user-select: none;
+}
+.navigator-home {
+  position: absolute; top: 0; right: 0; width: 30px; height: 30px; z-index: 1;
+  display: grid; place-items: center; border-radius: 6px;
+  color: inherit; background: var(--ui-toolbar-surface); border: 1px solid var(--ui-toolbar-line);
+}
+.navigator-ball {
+  position: relative; width: 132px; height: 124px; margin: 4px auto 0;
+  cursor: grab; touch-action: none;
+}
+.navigator-ball[data-dragging], .navigator-ball[data-dragging] button { cursor: grabbing; }
+.navigator-ring {
+  position: absolute; inset: 7px 6px; border: 1px solid var(--ui-toolbar-line); border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, #ffffff80, #eff0e726 65%, #53634814);
+  box-shadow: inset 0 0 0 5px #ffffff25, 0 2px 8px #2633210a; pointer-events: none;
+}
+.navigator-cube { position: absolute; top: 34px; left: 38px; width: 56px; height: 56px; transform-style: preserve-3d; pointer-events: none; }
+.navigator-face {
+  position: absolute; inset: 0; width: 56px; height: 56px; padding: 0;
+  display: grid; place-items: center; backface-visibility: hidden; pointer-events: auto;
+  border: 1px solid #94a08a; border-radius: 3px; background: var(--ui-toolbar-surface); color: var(--ui-toolbar-ink);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+}
+.navigator-face-front { transform: translateZ(28px); }
+.navigator-face-back { transform: rotateY(180deg) translateZ(28px); }
+.navigator-face-right { transform: rotateY(90deg) translateZ(28px); }
+.navigator-face-left { transform: rotateY(-90deg) translateZ(28px); }
+.navigator-face-top { transform: rotateX(90deg) translateZ(28px); background: #fafbf4; }
+.navigator-face-bottom { transform: rotateX(-90deg) translateZ(28px); }
+.navigator-face:hover, .navigator-face[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+.navigator-presets { display: flex; padding: 2px; border: 1px solid var(--ui-toolbar-line); border-radius: 6px; background: var(--ui-toolbar-surface); }
+.navigator-presets button { flex: 1; min-width: 44px; height: 28px; padding: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 11px; text-transform: capitalize; }
+.navigator-presets button:hover, .navigator-home:hover { background: var(--ui-toolbar-line); }
+.navigator-hint { display: block; margin-top: 5px; text-align: center; font-size: 10px; }
+.view-navigator :focus-visible { outline: 2px solid var(--ui-toolbar-ink); outline-offset: 3px; }
+@media (pointer: coarse) { .navigator-presets button { height: 44px; } .navigator-home { width: 44px; height: 44px; top: -8px; right: -4px; } }
+@media (prefers-reduced-motion: reduce) { .view-navigator button { transition: none; } }

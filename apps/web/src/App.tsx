@@ -1,9 +1,11 @@
 import { DuplicateAbovePanel } from './DuplicateAbovePanel';
 import { ProjectName } from './ProjectName';
-import { ViewportToolbar } from './ViewportToolbar';
+import { ViewportToolbar, type CameraView } from './ViewportToolbar';
 import { ViewportStatusBar } from './ViewportStatusBar';
 import { CreationMenu } from './CreationMenu';
 import { ArchitectureTools, type ArchitectureTool } from './ArchitectureTools';
+import { resolveDrawingLevel } from './drawing-level';
+import { useEditorEscape } from './use-editor-escape';
 import { createDrawnSurface, drawingPoint } from '@openlandcraft/core';
 import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
@@ -187,7 +189,7 @@ export function App() {
   );
   const [quality, setQuality] = useState<"low" | "high">("high");
   const [waterPreview, setWaterPreview] = useState({ reset: 0, step: 0, riverReset:0, riverStep:0, lakeReset:0, lakeStep:0 });
-  const [view, setView] = useState<"perspective" | "top" | "shore" | "underwater" | "river-underwater" | "lake-underwater">(
+  const [view, setView] = useState<CameraView>(
     "perspective",
   );
   const [frameToken, setFrameToken] = useState(0);
@@ -361,9 +363,9 @@ export function App() {
   const cancelPreview = useCallback(() => {
     setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
-    if(tool==='select')setOpeningFocus(null);
-    if(drawingArchitecture && !wallDraft.length)setTool('select');
-    setTool(current=>current==='door'||current==='window'||current==='opening-edit'||current==='wall-edit'||current==='outline-edit'?'select':current);
+    setOpeningFocus(null);
+    setTool('select');
+    setDrawingLevelId(null);
     editor.cancel();
     setRiverDraft([]);
       setPathDraft([]);
@@ -371,7 +373,13 @@ export function App() {
       setRegionDraft([]);setWallDraft([]);
     setBuildingCorner(null);
     setInspectorEpoch((value) => value + 1);
-  }, [editor,tool,drawingArchitecture,wallDraft.length]);
+  }, [editor]);
+  useEditorEscape(useCallback(() => {
+    cancelPreview();
+    setShowHelp(false);
+    setProjectDialog(null);
+    setNotice('');
+  }, [cancelPreview]), !opening && !importingModel);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -443,8 +451,10 @@ export function App() {
     }
   };
   const startArchitecture = (kind: ArchitectureTool, levelId?: string) => {
+    const level = resolveDrawingLevel(project, state.selectedId, placementFloors, levelId);
     chooseTool(kind);
-    setDrawingLevelId(levelId ?? null);
+    setDrawingLevelId(level?.id ?? null);
+    if (level) { editor.select(level.id); frame(); }
     setSurfaceOffset(kind==='roof'?3.4:0);
     setSurfaceThickness(kind==='wall'?0.25:0.2);
     setView('top');setPanel('inspector');
@@ -728,11 +738,7 @@ export function App() {
       if (opening || importingModel || event.defaultPrevented || event.isComposing) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], [aria-haspopup="menu"][aria-expanded="true"]')) return;
-      if (event.key === "Escape") {
-        cancelPreview();
-        setShowHelp(false);
-        return;
-      }
+      if (event.key === 'Escape') return; // Handled by the capture listener.
       if (projectDialog || showHelp || target?.isContentEditable || target?.closest("input, textarea, select, [role=textbox], [contenteditable]:not([contenteditable=false])"))
         return;
       const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
@@ -1093,6 +1099,7 @@ export function App() {
               playing={playing}
               quality={quality}
               view={view}
+              onNavigationView={setView}
               frameToken={frameToken}
               frameCancelToken={frameCancelToken}
               onMetrics={setMetrics}
@@ -1374,7 +1381,7 @@ export function App() {
                 </strong>
                 <p>
                   Drag on the ground to sculpt. Release to commit one undo step.
-                  Escape cancels the current stroke.
+                  Escape cancels the current stroke and exits sculpting.
                 </p>
                 <Button variant="default"
                   className="primary-button"
@@ -1785,8 +1792,8 @@ export function App() {
             <dd>Alt + left-drag an element · release to place · Escape cancels</dd>
             <dt>Delete selection</dt>
             <dd>Delete or Backspace · undo restores the selection's contents</dd>
-            <dt>Cancel preview</dt>
-            <dd>Escape</dd>
+            <dt>Cancel and exit tool</dt>
+            <dd>Escape · discard the current draft or preview and return to selection</dd>
             <dt>Save</dt>
             <dd>Ctrl/Cmd S · Export for a portable file</dd>
           </dl>
