@@ -1,5 +1,5 @@
-import { Button, Panel, PanelHeader, Row } from './ui';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button, Panel, PanelHeader, PanelResizeHandle, Row } from './ui';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronsDownUp, ChevronsUpDown, PanelRightClose, PanelRightOpen, Settings2 } from 'lucide-react';
 import { InspectorSectionsProvider, useInspectorSections } from './InspectorSectionsContext';
 
@@ -7,6 +7,12 @@ export function InspectorPanel({ children, scope, selectionKey, mobileActive, ed
   children: ReactNode; scope: string; selectionKey: string; mobileActive: boolean; editing: boolean;
 }) {
   const sections = useInspectorSections(scope);
+  const [width, setWidth] = useState(() => {
+    try { return Math.max(260, Math.min(440, Number(localStorage.getItem('olc-inspector-width')) || 300)); } catch { return 300; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('olc-inspector-width', String(width)); } catch { /* Optional preference. */ }
+  }, [width]);
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('olc-inspector-collapsed') === 'true'; } catch { return false; }
   });
@@ -19,6 +25,7 @@ export function InspectorPanel({ children, scope, selectionKey, mobileActive, ed
     requestAnimationFrame(() => (next ? expandButton : collapseButton).current?.focus());
   };
   return <Panel as="aside" id="inspector" aria-label="Object inspector"
+    style={{ '--inspector-width': `${width}px` } as CSSProperties}
     className={`inspector inspector-dock ${mobileActive ? 'mobile-active' : ''} ${collapsed ? 'inspector-collapsed' : ''}`}>
     <div className="inspector-rail">
       <Button variant="ghost" size="icon" ref={expandButton} className="icon-button" aria-label="Expand properties panel" title="Expand properties panel" onClick={() => togglePanel(false)}><PanelRightOpen size={17} /></Button>
@@ -35,5 +42,6 @@ export function InspectorPanel({ children, scope, selectionKey, mobileActive, ed
       </PanelHeader>
       <div className="inspector-scroll" ref={scroll}><InspectorSectionsProvider value={sections.value}>{children}</InspectorSectionsProvider></div>
     </div>
+    {!collapsed && <PanelResizeHandle side="right" width={width} defaultWidth={300} label="Properties panel width" controls="inspector" onWidthChange={setWidth} />}
   </Panel>;
 }

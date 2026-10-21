@@ -10,6 +10,7 @@ export { TreeRow } from './TreeRow';
 export { PointEditor } from './PointEditor';
 export { Row, FieldGrid, PropertyRow, ActionRow } from './Row';
 export { Panel, PanelHeader, PanelBody, PanelForm, PanelHeading } from './Panel';
+export { PanelResizeHandle } from './PanelResizeHandle';
 export { ActionBar } from './ActionBar';
 export { Button, buttonVariants } from './Button';
 export { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from './Card';

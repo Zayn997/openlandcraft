@@ -1,4 +1,4 @@
-import { Button, Panel, Row } from './ui';
+import { Button, Panel, PanelResizeHandle, Row } from './ui';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Box, Layers, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
@@ -8,7 +8,7 @@ export function WorkspaceSidebar({mobileActive,layers,objects,actions}:{mobileAc
   const [collapsed,setCollapsed]=useState(preference('collapsed','false')==='true');
   const [width,setWidth]=useState(()=>Math.max(260,Math.min(440,Number(preference('width','296'))||296)));
   useEffect(()=>{try{localStorage.setItem('olc-sidebar-tab',tab);localStorage.setItem('olc-sidebar-collapsed',String(collapsed));localStorage.setItem('olc-sidebar-width',String(width));}catch{/* Preferences are optional. */}},[tab,collapsed,width]);
-  return <Panel as="aside" className={`scene-panel workspace-sidebar ${mobileActive?'mobile-active':''} ${collapsed?'sidebar-collapsed':''}`} style={{'--sidebar-width':`${width}px`} as React.CSSProperties} aria-label="Workspace organizer">
+  return <Panel as="aside" id="workspace-organizer" className={`scene-panel workspace-sidebar ${mobileActive?'mobile-active':''} ${collapsed?'sidebar-collapsed':''}`} style={{'--sidebar-width':`${width}px`} as React.CSSProperties} aria-label="Workspace organizer">
     <div className="sidebar-rail"><button aria-label="Expand sidebar" title="Expand sidebar" onClick={()=>setCollapsed(false)}><PanelLeftOpen size={17}/></button><button aria-label="Open Layers" title="Layers" onClick={()=>{setTab('layers');setCollapsed(false);}}><Layers size={17}/></button><button aria-label="Open Objects" title="Objects" onClick={()=>{setTab('objects');setCollapsed(false);}}><Box size={17}/></button></div>
     <div className="sidebar-expanded">
       <Row justify="between" gap="none" className="shrink-0 min-h-10 border-0 border-b border-solid border-line pr-2">
@@ -19,6 +19,6 @@ export function WorkspaceSidebar({mobileActive,layers,objects,actions}:{mobileAc
       <div id="objects-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="objects-tab" hidden={tab!=='objects'}>{objects}</div>
       <div className="organizer-create">{actions}</div>
     </div>
-    <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-valuemin={260} aria-valuemax={440} aria-valuenow={width} tabIndex={0} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setWidth(w=>Math.max(260,Math.min(440,w+(e.key==='ArrowRight'?12:-12))));}}} onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId)){const left=e.currentTarget.parentElement!.getBoundingClientRect().left;setWidth(Math.max(260,Math.min(440,e.clientX-left)));}}} onPointerUp={e=>e.currentTarget.releasePointerCapture(e.pointerId)}/>
+    {!collapsed && <PanelResizeHandle side="left" width={width} defaultWidth={296} label="Sidebar width" controls="workspace-organizer" onWidthChange={setWidth} />}
   </Panel>;
 }

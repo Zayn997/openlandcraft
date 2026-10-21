@@ -1,10 +1,11 @@
 /* Dock positioning only. Controls and section styling live with their components. */
 @media (min-width:1001px) {
- .workspace { grid-template-columns:auto minmax(0,1fr) 300px; }
- .workspace:has(> .inspector-collapsed) { grid-template-columns:auto minmax(0,1fr) 40px; }
+ .workspace { grid-template-columns:auto minmax(0,1fr) auto; }
+ .inspector-dock { width:var(--inspector-width); }
+ .inspector-dock.inspector-collapsed { width:40px; }
 }
-.inspector-dock { display:flex; min-width:0; overflow:hidden; background:var(--surface); }
-.inspector-expanded { display:flex; flex:1; min-width:0; min-height:0; flex-direction:column; }
+.inspector-dock { display:flex; position:relative; min-width:0; overflow:visible; background:var(--surface); }
+.inspector-expanded { display:flex; flex:1; min-width:0; min-height:0; overflow:hidden; flex-direction:column; }
 .inspector-preview-dot { width:5px; height:5px; border-radius:50%; background:var(--accent); }
 .inspector-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; scrollbar-color:#54604e transparent; }
 .inspector-rail { display:none; align-items:center; flex-direction:column; width:39px; padding-top:8px; gap:16px; color:var(--muted); }
