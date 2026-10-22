@@ -1,4 +1,5 @@
 /** Shared bounded optics for river and ocean. groundAt comes from the evaluated terrain. */
+import {waterProjectionGLSL} from './water-projection';
 export const waterMaterialGLSL=/* glsl */`
   uniform sampler2D uSceneColor,uSceneDepth;
   uniform samplerCube uSky;
@@ -6,8 +7,9 @@ export const waterMaterialGLSL=/* glsl */`
   uniform mat4 projectionMatrix;
   uniform float uClarity,uRoughness,uRippleScale;
   #include <packing>
+  ${waterProjectionGLSL}
   vec3 waterRadiance(vec3 world,vec3 normal,float depth,vec3 tint,float clarity,float roughness){
-    vec3 eye=normalize(cameraPosition-world);
+    vec3 eye=waterEye(world);
     float distanceToEye=length(cameraPosition-world);
     float fresnel=0.0204+0.9796*pow(1.0-max(0.0,dot(normal,eye)),5.0);
     vec2 screenUV=gl_FragCoord.xy/uResolution;
@@ -19,7 +21,7 @@ export const waterMaterialGLSL=/* glsl */`
     float edge=smoothstep(0.0,0.06,min(min(bentUV.x,bentUV.y),min(1.0-bentUV.x,1.0-bentUV.y)));
     bentUV=mix(screenUV,clamp(bentUV,vec2(0.001),vec2(0.999)),edge);
     float surfaceDistance=-(viewMatrix*vec4(world,1.0)).z;
-    float capturedDistance=-perspectiveDepthToViewZ(texture2D(uSceneDepth,bentUV).x,uNearFar.x,uNearFar.y);
+    float capturedDistance=waterViewDepth(texture2D(uSceneDepth,bentUV).x);
     if(capturedDistance<surfaceDistance+0.04)bentUV=screenUV;
     vec3 bottom=texture2D(uSceneColor,bentUV).rgb;
     vec3 transmission=exp(-vec3(0.65,0.18,0.12)*path/clarity);

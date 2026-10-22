@@ -3,6 +3,7 @@ import {useFrame} from '@react-three/fiber';
 import * as THREE from 'three';
 import type {Lake,Project} from '@openlandcraft/core';
 import {LakeHistory} from './lake-water';
+import {startWork,endWork} from './frame-profile';
 
 type Resources={simulation:LakeHistory;history:THREE.DataTexture;distance:THREE.DataTexture};
 const Context=createContext<Resources|null>(null);
@@ -20,7 +21,7 @@ export function LakeSystem({site,lake,playing,preview,transient,children}:{site:
   useLayoutEffect(()=>{if(transient&&resources){resources.simulation.clearHistory();resources.history.needsUpdate=true;}},[transient,resources]);
   const lastStep=useRef(preview.step);
   useEffect(()=>{if(lastStep.current===preview.step)return;lastStep.current=preview.step;if(resources&&lake&&!playing){resources.simulation.lake=lake;resources.simulation.advance(0.25);resources.simulation.advance(0.25);resources.history.needsUpdate=true;}},[preview.step,resources,playing,lake]);
-  useFrame((_,delta)=>{if(!resources||!lake)return;resources.simulation.lake=lake;if(!playing)return;if(transient)resources.simulation.advanceClock(delta);else if(resources.simulation.advance(delta))resources.history.needsUpdate=true;},-1);
+  useFrame((_,delta)=>{if(!resources||!lake)return;resources.simulation.lake=lake;if(!playing)return;const start=startWork();if(transient)resources.simulation.advanceClock(delta);else if(resources.simulation.advance(delta))resources.history.needsUpdate=true;endWork('lake-history',start);},-1);
   return <Context.Provider value={resources}>{children}</Context.Provider>;
 }
 
@@ -38,7 +39,12 @@ export const lakeFieldGLSL=/* glsl */`
   float lakeWetAt(vec2 point){vec2 uv=lakeUV(point);if(uLakeEnabled<0.5||any(lessThan(uv,vec2(0.0)))||any(greaterThan(uv,vec2(1.0))))return 0.0;return texture2D(uLakeHistory,uv).g*uLakeWetBank;}
 `;
 export function lakeUniforms(empty:THREE.Texture){return {uLakeDistance:{value:empty},uLakeHistory:{value:empty},uLakeBounds:{value:new THREE.Vector4(0,0,1,1)},uLakeGrid:{value:new THREE.Vector2(2,2)},uLakeEnabled:{value:0},uLakeWetBank:{value:0},uLakeLevel:{value:0}};}
-export function updateLakeUniforms(u:ReturnType<typeof lakeUniforms>,resources:Resources|null){
-  u.uLakeEnabled.value=resources?1:0;if(!resources)return;
+export function updateLakeUniforms(u:ReturnType<typeof lakeUniforms>,resources:Resources|null,fallback:THREE.Texture){
+  u.uLakeEnabled.value=resources?1:0;
+  if(!resources){
+    // Disabled samplers are still bound by WebGL. Never resurrect a disposed lake texture.
+    u.uLakeDistance.value=fallback;u.uLakeHistory.value=fallback;u.uLakeWetBank.value=0;
+    return;
+  }
   const s=resources.simulation,b=s.bounds;u.uLakeDistance.value=resources.distance;u.uLakeHistory.value=resources.history;u.uLakeBounds.value.set(b.minX,b.minZ,b.width,b.depth);u.uLakeGrid.value.set(s.columns,s.rows);u.uLakeWetBank.value=s.lake.wetBank;u.uLakeLevel.value=s.lake.level;
 }

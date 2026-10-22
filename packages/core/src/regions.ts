@@ -1,5 +1,5 @@
 import {footprint} from './architecture';
-import {lakeDistance,pointSegmentDistance,polygonArea,pathStrips,sampleRiver,type PathPoint} from '@openlandcraft/landscape';
+import {lakeDistance,pointSegmentDistance,polygonArea,pathStrips,roundedRoutePoints,sampleRiver,type PathPoint} from '@openlandcraft/landscape';
 import {groundHeight,parseProject,type Entity,type Instance,type MaterialRegion,type PlantingRegion,type Project,type Region} from './model';
 import {evaluateProject} from './surface';
 
@@ -8,12 +8,12 @@ export function createRegion(project:Project,type:'material'|'planting',points?:
   const x=-project.site.width*0.3,z=project.site.depth*0.25,r=Math.min(10,project.site.width*0.12,project.site.depth*0.12);
   const common={id:crypto.randomUUID(),parentId:'site' as const,visible:true,points:points??[[x-r,z-r],[x+r,z-r],[x+r,z+r],[x-r,z+r]] as PathPoint[]};
   if(type==='material')return {...common,kind:'materialRegion',name:'Surface region',surface:'gravel',...REGION_SURFACES.gravel,detailScale:1};
-  if(!project.assets.length)throw new Error('Import a model or add a Demo tree before creating a planting region.');
+  if(!project.assets.length)throw new Error('Place a plant from Assets or import a model before creating a planting region.');
   return {...common,kind:'plantingRegion',name:'Planting region',assetId:project.assets[0].id,seed:42,density:8,scaleMin:0.7,scaleMax:1.2,spacing:2.5,clearance:1,exclusions:{water:true,paths:true,buildings:true}};
 }
 
 /** Compile obstacle queries once per explicit regeneration, never per animation frame. Hidden obstacles reserve space too. */
-export function plantingObstacle(project:Project,region:PlantingRegion):(x:number,z:number)=>boolean {
+export function plantingObstacle(project:Project,region:Pick<PlantingRegion,'clearance'|'exclusions'>):(x:number,z:number)=>boolean {
   const tests:((x:number,z:number)=>boolean)[]=[],margin=region.clearance;
   for(const e of project.entities){
     if(region.exclusions.water&&e.kind==='lake')tests.push((x,z)=>lakeDistance(e.points,x,z)>=-e.bank-margin);
@@ -21,7 +21,7 @@ export function plantingObstacle(project:Project,region:PlantingRegion):(x:numbe
     if(region.exclusions.water&&e.kind==='river'){
       const samples=sampleRiver(e.points);tests.push((x,z)=>samples.some((p,i)=>i>0&&pointSegmentDistance([x,z],[samples[i-1].x,samples[i-1].z],[p.x,p.z])<=e.width/2+e.bank+margin));
     }
-    if(region.exclusions.paths&&e.kind==='path'){const strips=pathStrips(e);tests.push((x,z)=>strips.some(p=>lakeDistance(p,x,z)>=-margin));}
+    if(region.exclusions.paths&&e.kind==='path'){const strips=pathStrips({...e,points:roundedRoutePoints(e)});tests.push((x,z)=>strips.some(p=>lakeDistance(p,x,z)>=-margin));}
     if(region.exclusions.buildings&&(e.kind==='block'||e.kind==='wall'||e.kind==='slab'||e.kind==='roof')){
       const origin=e.kind==='block'?e:project.entities.find(p=>p.kind==='level'&&p.id===e.parentId);
       if(!origin||!('position' in origin)||!('rotation' in origin))continue;

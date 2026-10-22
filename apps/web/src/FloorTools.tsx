@@ -21,7 +21,7 @@ export function FloorTools({project,editor,selectedId,selectedIds,select,guard,i
       <Row wrap className="floor-options"><span>{ids.length} selected</span><button disabled={busy||!ids.length||!name.trim()} onClick={()=>guard(()=>{const u=createUnit(editor.getSnapshot().project,ids,name.trim());editor.execute({type:'add',entity:u},'Group architectural unit');select(u.id);})}>Make unit</button><button aria-label="Clear element selection" onClick={onClear}><X size={14}/></button></Row>
       <button className="floor-wide-button" disabled={busy||!parts.length||parts.some(p=>unitForPart(project,p.id))||!name.trim()} onClick={()=>guard(()=>{const u=createUnit(project,parts.map(p=>p.id),name.trim());editor.execute({type:'add',entity:u},'Group floor as unit');select(u.id);})}>Group this floor as a unit</button>
     </details>
-    <FieldMessage>Select a unit or whole floor to use <ArrowUp size={12}/> Duplicate above in Properties. Floor spacing starts at {floorHeight(project,level).toFixed(2)} m.</FieldMessage>
+    <FieldMessage>Select a unit or whole floor to use <ArrowUp size={12}/> Duplicate above in the viewer. Floor spacing starts at {floorHeight(project,level).toFixed(2)} m.</FieldMessage>
   </Panel>;
 }
 

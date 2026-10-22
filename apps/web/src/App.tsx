@@ -1,7 +1,13 @@
+import { upgradeLibraryFish } from './fish-upgrade';
+import { isBirdAsset, isFishAsset, isGroundCharacterAsset } from '@openlandcraft/core';
 import { DuplicateAbovePanel } from './DuplicateAbovePanel';
+import {measured,type AppDiagnostics} from './app-diagnostics';
+import {createViewportMetricsSource,RendererInfo} from './viewport-metrics';
 import { ProjectName } from './ProjectName';
 import { ViewportToolbar, type CameraView } from './ViewportToolbar';
+import type {CameraProjection} from '@openlandcraft/viewport';
 import { ViewportStatusBar } from './ViewportStatusBar';
+import { PathDrawingPanel } from './PathDrawingPanel';
 import { CreationMenu } from './CreationMenu';
 import { ArchitectureTools, type ArchitectureTool } from './ArchitectureTools';
 import { resolveDrawingLevel } from './drawing-level';
@@ -13,6 +19,9 @@ import { InspectorPanel } from './InspectorPanel';
 import { canEditObject, objectLayer } from '@openlandcraft/core';
 import { LayersPanel } from './LayersPanel';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
+import { AssetsPanel } from './AssetsPanel';
+import { AboutCredits } from './AboutCredits';
+import { usePlantPlacement } from './use-plant-placement';
 import {OutlineEditor} from './OutlineEditor';
 import type {OutlineHandle} from '../../../packages/viewport/src/outline-edit';
 import {WallEditor} from './WallEditor';
@@ -67,7 +76,9 @@ import {
   createProject,
   createBuilding,
   createRiver,
-  createPath,
+  createDrawnPath,
+  createCharacterRoute,
+  characterWalkingPath,
   createLake,
   createRegion,
   isRegion,
@@ -85,6 +96,7 @@ import {
   type Block,
   type Entity,
   type Ocean,
+  type Path,
 } from "@openlandcraft/core";
 import {
   deserializeProject,
@@ -110,6 +122,7 @@ import {
   type RiverPoint,
   type PathPoint,
   pathLength,
+  walkingRouteIssue,
   segmentDistance,
 } from "@openlandcraft/landscape";
 import { WaterSystem, type InlandWaterType } from "./WaterSystem";
@@ -145,9 +158,11 @@ function IconButton({
   );
 }
 
+import {RouteCornerEditor} from './RouteCornerEditor';
+import {RouteCornerFields} from './RouteCornerFields';
 import { ConstructionInspector } from "./ConstructionInspector";
 
-export function App() {
+export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const [editor] = useState(() => new Editor(createProject()));
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const project = state.preview ?? state.project;
@@ -171,6 +186,7 @@ export function App() {
   const [isolateFloor,setIsolateFloor]=useState(false);
   const [copyDraft,setCopyDraft]=useState<{sourceId:string;height:number;prefix:string}|null>(null);
   const [copySpacing,setCopySpacing]=useState<number|null>(null);
+  const copyAnchor=useRef<HTMLDivElement>(null);
   const selectedLevel=ownerLevel(project,state.selectedId);
   const copyHeight=copySpacing??copyDraft?.height??(selectedLevel?floorHeight(project,selectedLevel):3.4);
   const copyResult=useMemo(()=>{
@@ -192,17 +208,21 @@ export function App() {
   const [view, setView] = useState<CameraView>(
     "perspective",
   );
+  const [projection,setProjection]=useState<CameraProjection>('perspective');
+  const activeProjection=view==='shore'||view.endsWith('underwater')?'perspective':projection;
   const [frameToken, setFrameToken] = useState(0);
   const [frameCancelToken, setFrameCancelToken] = useState(0);
   const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0'},window:{width:'1.4',height:'1.2',sill:'0.9'}});
   const [openingFocus,setOpeningFocus]=useState<{wallId:string;openingId:string}|null>(null);
   const [openingStatus,setOpeningStatus]=useState('Point at a wall to preview an opening.');
-  const [metrics, setMetrics] = useState<ViewportMetrics | null>(null);
+  const [metricsSource]=useState(createViewportMetricsSource);
+  const reportMetrics=useCallback((value:ViewportMetrics)=>{metricsSource.publish(value);diagnostics?.metrics(value);},[diagnostics,metricsSource]);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("Opening local project…");
   const [storageReady, setStorageReady] = useState(false);
   const [opening, setOpening] = useState(true);
+  const [hydrating,setHydrating]=useState(true);
   const [panel, setPanel] = useState<"scene" | "inspector">("scene");
   const [showHelp, setShowHelp] = useState(false);
   const [projectDialog, setProjectDialog] = useState<"new" | "rename" | null>(
@@ -210,7 +230,7 @@ export function App() {
   );
   const [storageRecovery, setStorageRecovery] = useState(false);
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [tool, setTool] = useState<"select" | "terrain" | "building" | "wall" | "floor" | "roof" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
+  const [tool, setTool] = useState<"select" | "terrain" | "plant" | "building" | "wall" | "floor" | "roof" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
     "select",
   );
   const [regionsOpen,setRegionsOpen]=useState(false);
@@ -220,10 +240,20 @@ export function App() {
   const [waterType,setWaterType]=useState<InlandWaterType>("river");
   const [lakeDraft,setLakeDraft]=useState<PathPoint[]>([]);
   const [pathDraft, setPathDraft] = useState<PathPoint[]>([]);
+  const [pathDraftRounding,setPathDraftRounding]=useState<number[]>([]);
+  const [pathCornerIndex,setPathCornerIndex]=useState<number|null>(null);
+  const [routeCornerIndex,setRouteCornerIndex]=useState<number|null>(null);
+
+  const [pathRedrawId,setPathRedrawId] = useState<string | null>(null);
+  const [pathReturnId,setPathReturnId] = useState<string | null>(null);
+  const [pathDrawWidth,setPathDrawWidth] = useState(3);
+  const [pathDrawSurface,setPathDrawSurface] = useState<Path['surface']>('gravel');
+  const pathDrawingError = pathDraft.length > 1 ? walkingRouteIssue({points:pathDraft,width:pathDrawWidth,cornerRounding:pathDraftRounding},project.site) : null;
   const [riverDraft, setRiverDraft] = useState<RiverPoint[]>([]);
   const [transformMode, setTransformMode] =
     useState<TransformMode>("translate");
   const [snapping, setSnapping] = useState(true);
+  const plants = usePlantPlacement(editor, tool === 'plant', snapping, setError);
   const [wallDraft,setWallDraft]=useState<PlanPoint[]>([]);
   const [drawingLevelId,setDrawingLevelId]=useState<string | null>(null);
   const [surfaceOffset,setSurfaceOffset]=useState(0);
@@ -240,14 +270,16 @@ export function App() {
   }, [selected?.kind, transformMode]);
   const [brush, setBrush] = useState<BrushSettings>(DEFAULT_BRUSH);
   const [strokeTime, setStrokeTime] = useState(0);
+  const reportStroke=useCallback((value:number)=>{setStrokeTime(value);diagnostics?.stroke(value);},[diagnostics]);
   const [stampPosition, setStampPosition] = useState<[number, number]>([-8, 8]);
   const fileInput = useRef<HTMLInputElement>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let alive = true;
-    loadLocal()
+    measured(diagnostics,'local-read-parse',loadLocal)
       .then(async (saved) => {
-        if (saved) await validateModels(saved.assets);
+        if (!alive) return;
+        if (saved) { saved = await measured(diagnostics,'local-upgrade',()=>upgradeLibraryFish(saved!)); await measured(diagnostics,'local-model-validation',()=>validateModels(saved!.assets)); }
         if (!alive) return;
         if (saved) {
           editor.load(saved);
@@ -258,6 +290,8 @@ export function App() {
         }
         setStorageReady(true);
         setOpening(false);
+        setHydrating(false);
+        diagnostics?.event('local-ready',{entities:saved?.entities.length??0,assets:saved?.assets.length??0});
       })
       .catch((error: unknown) => {
         if (!alive) return;
@@ -269,6 +303,7 @@ export function App() {
         setSaveStatus("Local storage unavailable");
         setStorageRecovery(true);
         setOpening(false);
+        setHydrating(false);
       });
     return () => {
       alive = false;
@@ -281,7 +316,7 @@ export function App() {
       setSaveStatus("Saving…");
       saveQueue.current = saveQueue.current
         .catch(() => undefined)
-        .then(() => saveLocal(committed))
+        .then(() => measured(diagnostics,'local-save',()=>saveLocal(committed)))
         .then(() => {
           if (editor.getSnapshot().project === committed)
             setSaveStatus("Saved locally");
@@ -333,6 +368,7 @@ export function App() {
   }, []);
   const select = useCallback(
     (id: string | null, additive = false) => {
+      setRouteCornerIndex(null);
       const before=editor.getSnapshot();
       if(id&&!canEditObject(before.project,id,before.isolatedLayerId))return;
       const entity=before.project.entities.find(e=>e.id===id);
@@ -350,7 +386,7 @@ export function App() {
       if (id === "terrain")
         setView((current) => (current === "shore" || current.endsWith("underwater") ? "perspective" : current));
       setRiverDraft([]);
-      setPathDraft([]);
+      setPathDraft([]); setPathRedrawId(null); setPathReturnId(null); setPathDraftRounding([]); setPathCornerIndex(null);
       setLakeDraft([]);
       setRegionDraft([]);setWallDraft([]);
       setBuildingCorner(null);
@@ -361,6 +397,7 @@ export function App() {
     [editor],
   );
   const cancelPreview = useCallback(() => {
+    if (tool === 'path' && pathReturnId) editor.select(pathReturnId);
     setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
     setOpeningFocus(null);
@@ -368,18 +405,19 @@ export function App() {
     setDrawingLevelId(null);
     editor.cancel();
     setRiverDraft([]);
-      setPathDraft([]);
+      setPathDraft([]); setPathRedrawId(null); setPathReturnId(null); setPathDraftRounding([]); setPathCornerIndex(null);
       setLakeDraft([]);
       setRegionDraft([]);setWallDraft([]);
     setBuildingCorner(null);
     setInspectorEpoch((value) => value + 1);
-  }, [editor]);
+  }, [editor,tool,pathReturnId]);
   useEditorEscape(useCallback(() => {
+    if(routeCornerIndex!==null||pathCornerIndex!==null){editor.cancel();setRouteCornerIndex(null);setPathCornerIndex(null);return;}
     cancelPreview();
     setShowHelp(false);
     setProjectDialog(null);
     setNotice('');
-  }, [cancelPreview]), !opening && !importingModel);
+  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex]), !opening && !importingModel);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -442,7 +480,7 @@ export function App() {
     if(next==='door'||next==='window'){setOpeningStatus('Point at a wall to place a '+next+'.');if(placementLevel)editor.select(placementLevel.id);setPanel('inspector');}
     setBuildingCorner(null);
     setRiverDraft([]);
-      setPathDraft([]);
+      setPathDraft([]); setPathRedrawId(null); setPathReturnId(null); setPathDraftRounding([]); setPathCornerIndex(null);
       setLakeDraft([]);
       setRegionDraft([]);setWallDraft([]);
     if (next === "terrain") {
@@ -491,13 +529,29 @@ export function App() {
     editor.cancel();const current=editor.getSnapshot().project,lake=createLake(current,points);
     editor.execute({type:"add",entity:lake},"Add lake");select(lake.id);setNotice("Lake added. Edit its boundary, level, and surface in Water System.");
   });
-  const addPath = (points?: PathPoint[]) => guard(() => {
-    editor.cancel();
-    const path = createPath(editor.getSnapshot().project, points);
-    editor.execute({ type: "add", entity: path }, "Add path");
-    select(path.id);
-    setNotice("Path added. Drag numbered points or edit width and surface in Properties.");
+  const startPathDrawing = (characterId?: string) => guard(() => {
+    const current = editor.getSnapshot(), character = current.project.entities.find(entity=>entity.id===characterId);
+    if(characterId && (character?.kind!=='instance'||!canEditObject(current.project,characterId,current.isolatedLayerId))) throw new Error('Show and unlock this person before drawing their route.');
+    const existing = character?.kind==='instance' ? characterWalkingPath(character) : current.project.entities.find(e => e.kind === 'path');
+    if (!characterId && existing && !canEditObject(current.project,existing.id,current.isolatedLayerId)) throw new Error('Show and unlock the path layer before redrawing.');
+    chooseTool('path');
+    setPathReturnId(characterId ?? null);
+    setPathRedrawId(existing?.id ?? null);
+    setPathDrawWidth(existing?.width ?? 3); setPathDrawSurface(existing?.surface ?? 'gravel');
+    editor.select(characterId ?? existing?.id ?? null); setView('top'); setPanel('inspector'); frame();
+    setNotice(`Click the start, corners, and end on the terrain. Finish ${characterId ? 'route' : 'path'} in Properties.`);
   });
+  const finishPathDrawing = () => guard(() => {
+    if(pathReturnId){
+      const character=createCharacterRoute(editor.getSnapshot().project,pathReturnId,pathDraft,pathDrawWidth,pathDraftRounding);
+      editor.execute({type:'replace',entity:character},pathRedrawId ? 'Redraw walking route' : 'Draw walking route');
+      select(character.id);setNotice('Walking route saved for this person. Drag its handles or edit Route points in Properties.');return;
+    }
+    const path = createDrawnPath(editor.getSnapshot().project,pathDraft,{width:pathDrawWidth,surface:pathDrawSurface,cornerRounding:pathDraftRounding},pathRedrawId ?? undefined);
+    editor.execute({type:pathRedrawId ? 'replace' : 'add',entity:path},pathRedrawId ? 'Redraw path' : 'Draw path');
+    select(path.id); setNotice('Landscape path ready. People’s walking routes are edited separately in their Properties.');
+  });
+  const cancelPathDrawing = () => { const previous = pathReturnId ?? pathRedrawId; chooseTool('select'); if (previous) select(previous); };
   const addRiver = (points?: RiverPoint[]) =>
     guard(() => {
       editor.cancel();
@@ -552,6 +606,7 @@ export function App() {
       );
     });
   const groundPoint = (x: number, z: number) => {
+    if (tool === 'plant') { plants.place(x, z); return; }
     if(drawingArchitecture){
       if(!drawingLevel)return;
       const point=drawingPoint(drawingLevel,x,z);
@@ -589,9 +644,13 @@ export function App() {
         const current = editor.getSnapshot().project;
         const snapped = snapPathPoint(current, [x, z], snapping);
         const points = [...pathDraft, snapped.point];
-        if (points.length > 1) parseProject({ ...current, entities: [...current.entities, createPath(current, points)] });
-        else if (Math.abs(snapped.point[0]) > current.site.width/2 - 1 || Math.abs(snapped.point[1]) > current.site.depth/2 - 1) throw new Error("Keep the path surface inside the site.");
+        if (points.length > 1) {
+          if(pathReturnId)createCharacterRoute(current,pathReturnId,points,pathDrawWidth,[...pathDraftRounding,0]);
+          else createDrawnPath(current,points,{width:pathDrawWidth,surface:pathDrawSurface,cornerRounding:[...pathDraftRounding,0]},pathRedrawId ?? undefined);
+        }
+        else if (Math.abs(snapped.point[0]) > current.site.width/2 - pathDrawWidth/2 || Math.abs(snapped.point[1]) > current.site.depth/2 - pathDrawWidth/2) throw new Error("Keep the path surface inside the site.");
         setPathDraft(points);
+        setPathDraftRounding(values=>[...values,0]);
         if (snapped.target) setNotice(`Endpoint snapped to ${snapped.target}.`);
       });
       return;
@@ -913,16 +972,20 @@ export function App() {
     });
   const importProject = async (file: File | undefined) => {
     if (!file) return;
+    const openStart=performance.now();
+    diagnostics?.event('file-open-start',{fileName:file.name,bytes:file.size});
     setOpening(true);
     try {
       if (file.size > MAX_PROJECT_BYTES)
         throw new Error("This project exceeds the 40 MB limit.");
-      const parsed = deserializeProject(await file.text());
-      await validateModels(parsed.assets);
+      const text=await measured(diagnostics,'file-read',()=>file.text());
+      const decoded=await measured(diagnostics,'file-parse',()=>deserializeProject(text));
+      const parsed=await measured(diagnostics,'file-upgrade',()=>upgradeLibraryFish(decoded));
+      await measured(diagnostics,'file-model-validation',()=>validateModels(parsed.assets));
       editor.load(parsed);
       setTool("select");
       setRiverDraft([]);
-      setPathDraft([]);
+      setPathDraft([]); setPathRedrawId(null); setPathReturnId(null); setPathDraftRounding([]); setPathCornerIndex(null);
       setLakeDraft([]);
       setRegionDraft([]);setWallDraft([]);
       setBuildingCorner(null);
@@ -932,6 +995,7 @@ export function App() {
       queueSave();
       setError("");
       setNotice("Project opened. Session history has been reset.");
+      diagnostics?.event('file-open-ready',{durationMs:performance.now()-openStart,entities:parsed.entities.length,assets:parsed.assets.length});
     } catch (error) {
       setError(
         error instanceof Error
@@ -943,6 +1007,8 @@ export function App() {
       if (fileInput.current) fileInput.current.value = "";
     }
   };
+
+  useEffect(()=>{diagnostics?.projectOpener?.(importProject);return()=>diagnostics?.projectOpener?.(null);},[diagnostics,importProject]);
 
   return (
     <div className="app">
@@ -1034,23 +1100,18 @@ export function App() {
         <WorkspaceSidebar mobileActive={panel==='scene'}
           layers={<LayersPanel project={state.project} editor={editor} selectedIds={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]} isolatedId={state.isolatedLayerId} guard={guard} onSelectObjects={ids=>{select(ids[0]??null);setSelectedParts(ids);}}/>}
           objects={<SceneObjects project={project} selectedId={state.selectedId} selectedIds={selectedParts} editor={editor} onSelect={select} guard={guard} isolatedId={state.isolatedLayerId}/>}
+          assets={<AssetsPanel chosen={tool==='plant'?plants.chosen:null} loading={plants.loading} grow={plants.grow} onGrow={plants.setGrow}
+            wind={plants.wind} onWind={plants.setWind}
+            mode={plants.mode} onMode={mode=>{editor.cancel();plants.setMode(mode);}} brush={plants.brush} onBrush={plants.setBrush}
+            onChoose={plant=>{chooseTool('plant');setNotice('');void plants.choose(plant);}} onCancel={()=>chooseTool('select')}/>}
           actions={<>
-            <CreationMenu project={project} busy={!!state.gestureLabel} importingModel={importingModel}
+            <CreationMenu project={project} busy={!!state.gestureLabel}
               onAddBlock={addBlock} onAddBuilding={()=>addBuilding()}
               onDrawBuilding={()=>{chooseTool('building');setView('top');}}
               onDrawArchitecture={kind=>startArchitecture(kind)}
               onRegions={()=>openRegions()} onWater={()=>openWaterSystem()}
-              onAddPath={()=>addPath()} onDrawPath={()=>{chooseTool('path');setView('top');}}
-              onAddOcean={addOcean} onDemoTree={()=>{void fetch("/models/openlandcraft-pine.glb")
-                  .then((response) => {
-                    if (!response.ok)
-                      throw new Error("Demo model could not load.");
-                    return response.blob();
-                  })
-                  .then((blob) =>
-                    importModel(new File([blob], "Coastal pine.glb")),
-                  )
-                  .catch((error: Error) => setError(error.message));}}
+              onDrawPath={()=>startPathDrawing()}
+              onAddOcean={addOcean}
               onPlaceAsset={placeAsset}
               onRemoveAsset={id=>guard(()=>editor.execute({type:'removeAsset',id},'Remove model source'))}
             />
@@ -1070,14 +1131,18 @@ export function App() {
         />
 
         <main className="stage" aria-label="3D editor">
-          <ViewportToolbar view={view}
+          <ViewportToolbar view={view} projection={activeProjection} onProjection={next=>{setProjection(next);setView(next==='orthographic'?'axonometric':'perspective');}}
             canShore={project.entities.some(entity => entity.kind === 'ocean' && entity.visible)} canDive={canDive}
-            onView={next => { if(next === 'shore' || next.endsWith('underwater')) chooseTool('select'); setView(next); }}
+            onView={next => { if(next === 'shore' || next.endsWith('underwater')) chooseTool('select'); if(next==='perspective'||next==='axonometric')setProjection(next==='axonometric'?'orthographic':'perspective');setView(next); }}
             transform={tool === 'select' && selected?.visible && ['instance','level','block'].includes(selected.kind) ? transformMode : undefined}
             canScale={selected?.kind === 'instance'} onTransform={mode => {editor.cancel();setTransformMode(mode);}}
             snapping={snapping} onSnapping={setSnapping} />
           <div className={`viewport-area${view.endsWith('underwater')?' underwater-view':''}`}>
-            <Viewport
+            {!hydrating && <Viewport
+              plantAsset={tool==='plant'?plants.asset:undefined}
+              plantBrush={tool==='plant'&&plants.mode==='paint'?{settings:plants.brush,onAdded:plants.onAdded}:undefined}
+              plantGrowth={plants.growth}
+              plantWind={plants.wind}
               onCopyStatus={setNotice}
               onCopyPlaced={result=>{select(result.selectedIds[0]);if(result.focus)setOpeningFocus(result.focus);else if(result.selectedIds.length>1)setSelectedParts(result.selectedIds);}}
               selectedIds={selectedParts}
@@ -1090,6 +1155,7 @@ export function App() {
               openingEditing={editingOpening&&placementLevel?{level:placementLevel,focus:focusedOpening?openingFocus:null,onSelect:focusOpening,onStatus:setOpeningStatus}:undefined}
               openingPlacement={placingOpening&&placementLevel?{level:placementLevel,settings:openingSettings,onStatus:setOpeningStatus,onPlace:placeOpening}:undefined}
               floorCopy={copyResult.plan}
+              copyAnchor={copyAnchor}
               copying={!!copyDraft}
               isolatedLayerId={state.isolatedLayerId}
               project={project}
@@ -1099,14 +1165,15 @@ export function App() {
               playing={playing}
               quality={quality}
               view={view}
+              projection={activeProjection}
               onNavigationView={setView}
               frameToken={frameToken}
               frameCancelToken={frameCancelToken}
-              onMetrics={setMetrics}
+              onMetrics={reportMetrics}
               editor={editor}
               tool={tool}
               brush={brush}
-              onStrokeTime={setStrokeTime}
+              onStrokeTime={reportStroke}
               onGroundPoint={groundPoint}
               wallDraft={wallDraft}
               architectureDrawing={drawingArchitecture&&drawingLevel?{level:drawingLevel,kind:tool,offset:tool==='wall'?0:surfaceOffset,thickness:surfaceThickness}:undefined}
@@ -1115,12 +1182,26 @@ export function App() {
               snapping={snapping}
               riverDraft={riverDraft}
               pathDraft={pathDraft}
+              pathDraftRounding={pathDraftRounding}
+              draftRouteAnchor={pathCornerIndex}
+              onDraftRouteAnchor={index=>{setPathCornerIndex(index);}}
+              selectedRouteAnchor={routeCornerIndex}
+              routeCornerControls={routeCornerIndex!==null&&selected&&(selected.kind==='path'||selected.kind==='instance'&&selected.walkingRoute)?<RouteCornerEditor key={`${selected.id}:${routeCornerIndex}`} entity={selected} index={routeCornerIndex} editor={editor} onClose={()=>setRouteCornerIndex(null)}/>:undefined}
+              draftCornerControls={pathCornerIndex!==null?<RouteCornerFields route={{points:pathDraft,width:pathDrawWidth,cornerRounding:pathDraftRounding}} index={pathCornerIndex} onChange={amount=>setPathDraftRounding(values=>values.map((value,index)=>index===pathCornerIndex?amount:value))} onClose={()=>setPathCornerIndex(null)}/>:undefined}
+              onRouteAnchor={index=>setRouteCornerIndex(index)}
+              pathDraftWidth={pathDrawWidth}
               regionDraft={regionDraft}
               lakeDraft={lakeDraft}
               lakeDraftLevel={lakeDraft.length?createLake(project,lakeDraft).level:0}
               waterPreview={waterPreview}
-            />
+            />}
 
+            {tool==='select' && selected?.visible && (selected.kind==='level'||selected.kind==='unit') && <div
+              ref={copyAnchor} className="absolute left-0 top-0 z-10 w-[220px] max-w-[calc(100%-28px)]" style={{visibility:'hidden'}}>
+              <DuplicateAbovePanel
+                spacing={copyHeight} busy={!!state.gestureLabel} preview={!!copyDraft} valid={!!copyResult.plan} movesRoof={!!copyResult.plan?.movedRoofIds.length} error={copyResult.error}
+                onSpacing={value=>{setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}} onDuplicate={duplicateNext} onFinish={()=>setCopyDraft(null)} />
+            </div>}
             <div className="viewport-tools">
               <IconButton
                 label="Selection tool"
@@ -1166,13 +1247,7 @@ export function App() {
             )}
             {tool==="region"&&<div className="building-hud river-hud region-hud" role="status"><Leaf size={15}/><span>{regionDraft.length} boundary points</span><Field variant="checkbox"><CheckboxInput aria-label="Snap drawing region" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</Field><button disabled={regionDraft.length<3} onClick={()=>addRegion(regionDraft)}>Finish region</button><button disabled={!regionDraft.length} onClick={()=>setRegionDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
             {tool==="lake"&&<div className="building-hud river-hud lake-hud" role="status"><Droplets size={15}/><span>{lakeDraft.length?`${lakeDraft.length} boundary points · Finish closes the shoreline`:"Choose the first lake boundary point on land"}</span><Field variant="checkbox"><CheckboxInput aria-label="Snap drawing lake" checked={snapping} onChange={e=>setSnapping(e.target.checked)}/>Snap</Field><button disabled={lakeDraft.length<3} onClick={()=>addLake(lakeDraft)}>Finish lake</button><button disabled={!lakeDraft.length} onClick={()=>setLakeDraft(p=>p.slice(0,-1))}>Back</button><button onClick={()=>chooseTool("select")}>Cancel</button></div>}
-            {tool === "path" && <div className="building-hud river-hud path-hud" role="status">
-              <Route size={15} /><span>{pathDraft.length ? `${pathDraft.length} points · ${pathLength(pathDraft).toFixed(1)} m · Choose next point` : "Choose the path start on land"}</span>
-              <Field variant="checkbox"><CheckboxInput aria-label="Snap drawing path" checked={snapping} onChange={event => setSnapping(event.target.checked)} />Snap</Field>
-              <button disabled={pathDraft.length < 2} onClick={() => addPath(pathDraft)}>Finish path</button>
-              <button disabled={!pathDraft.length} onClick={() => setPathDraft(points => points.slice(0,-1))}>Back</button>
-              <button onClick={() => chooseTool("select")}>Cancel</button>
-            </div>}
+            {tool === 'path' && <div className="building-hud river-hud path-hud" role="status"><Route size={15}/><span>{pathDraft.length ? `${pathDraft.length} points · ${pathLength(pathDraft).toFixed(1)} m · Click next corner or finish in Properties` : 'Click the path start on the terrain'}</span></div>}
             {tool === "river" && (
               <div className="building-hud river-hud" role="status">
                 <Waves size={15} />
@@ -1215,21 +1290,19 @@ export function App() {
               </div>
             )}
           </div>
-          <ViewportStatusBar saveStatus={saveStatus} fps={metrics?.fps} hasWater={hasWater}
-            playing={playing} onPlaying={() => setPlaying(value => !value)} quality={quality} onQuality={setQuality} onHelp={() => setShowHelp(true)} />
+          <ViewportStatusBar placement={tool==='plant'&&plants.chosen?{name:plants.chosen.name,loading:plants.loading,painting:plants.mode==='paint',bird:plants.chosen.category==='Birds',fish:plants.chosen.category==='Fish',onCancel:()=>chooseTool('select')}:undefined} saveStatus={saveStatus} hasAnimation={hasWater || project.assets.some(asset => isBirdAsset(asset) || isFishAsset(asset) || isGroundCharacterAsset(asset)) || (plants.wind && project.assets.some(asset => asset.attribution?.startsWith('Kenney Nature Kit')))}
+            metricsSource={metricsSource} playing={playing} onPlaying={() => setPlaying(value => !value)} quality={quality} onQuality={setQuality} onHelp={() => setShowHelp(true)} />
         </main>
 
         <InspectorPanel
+          reveal={tool === 'path'}
           mobileActive={panel === "inspector"}
           editing={!!state.gestureLabel}
           selectionKey={focusedOpening?.id ?? state.selectedId ?? ''}
-          scope={drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
+          scope={tool === 'path' ? 'draw-path' : drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
-          {tool==='select' && selected?.visible && (selected.kind==='level'||selected.kind==='unit') && <DuplicateAbovePanel
-            spacing={copyHeight} busy={!!state.gestureLabel} preview={!!copyDraft} valid={!!copyResult.plan} movesRoof={!!copyResult.plan?.movedRoofIds.length} error={copyResult.error}
-            onSpacing={value=>{setCopySpacing(value);setCopyDraft(d=>d?{...d,height:value}:null);}} onDuplicate={duplicateNext} onFinish={()=>setCopyDraft(null)} />}
           {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
-          {drawingArchitecture ? <ArchitectureTools kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+          {tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
             <PanelBody className="terrain-inspector">
               <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
               <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
@@ -1418,7 +1491,7 @@ export function App() {
           ) : selected?.kind === "lake" ? (
             <LakeInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>
           ) : selected?.kind === "path" ? (
-            <PathInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} path={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping} />
+            <PathInspector onCorner={index=>{setRouteCornerIndex(index);}} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} path={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping} onRedraw={()=>startPathDrawing()} />
           ) : selected?.kind === "river" ? (
             <RiverInspector
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}
@@ -1435,6 +1508,11 @@ export function App() {
             selected.kind !== "block" &&
             selected.kind !== "ocean" ? (
             <ConstructionInspector
+              onSelectRouteCorner={index=>setRouteCornerIndex(index)}
+
+
+              onFrameRoute={()=>{setView('top');frame();}}
+              onDrawPath={startPathDrawing}
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}
               selected={selected}
               project={project}
@@ -1770,7 +1848,8 @@ export function App() {
         </div>
       )}
       {showHelp && (
-        <Dialog title="Editor help" onClose={() => setShowHelp(false)}>
+        <Dialog title="Help & About" onClose={() => setShowHelp(false)}>
+          <AboutCredits />
           <span className="eyebrow">OPENLANDCRAFT / M7</span>
           <h3>{state.project.name}</h3>
           <p>
@@ -1809,14 +1888,7 @@ export function App() {
             banks, and wind waves. Ocean has its own controls. Draw path creates a terrain-following route with editable
             points, width, and surface. Endpoints can snap to building edges. Landscape regions adds surface materials and seeded planting areas. Preview regeneration before Apply; editing an individual plant detaches it from regeneration.
           </FieldMessage>
-          {metrics && (
-            <p className="renderer-info">
-              {metrics.renderer}
-              <br />
-              {metrics.calls} draw calls · {metrics.triangles.toLocaleString()}{" "}
-              triangles
-            </p>
-          )}
+          <RendererInfo source={metricsSource}/>
         </Dialog>
       )}
     </div>

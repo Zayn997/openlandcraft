@@ -1,6 +1,7 @@
 import type { Ocean, Project } from '@openlandcraft/core';
 import { sampleHeight } from '@openlandcraft/landscape';
 import { coastalWave } from './coastal-waves';
+import {HistoryWaves,historyWaveReference} from './history-wave';
 
 const TAU = Math.PI * 2;
 const clamp = (x: number, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -68,11 +69,13 @@ export class CoastHistory {
   readonly foam: Float32Array; readonly wet: Float32Array; readonly pixels: Uint8Array;
   private quiet: Uint8Array;
   private nextFoam: Float32Array; private accumulator = 0;
+  private waves:HistoryWaves;private waveKey='';
   time = 0; clock = 0;
   constructor(site: Project['site'], public ocean: Ocean) {
     this.field = buildCoastField(site, ocean); const n = this.field.heights.length;
     this.foam = new Float32Array(n); this.nextFoam = new Float32Array(n); this.wet = new Float32Array(n); this.pixels = new Uint8Array(n * 4);
     this.quiet = new Uint8Array(n);
+    this.waves=new HistoryWaves(n);
     const f=this.field,maxWater=ocean.amplitude*Math.max(1.5,ocean.swash)*1.3;
     for(let i=0;i<n;i++) {
       const depth=ocean.level-f.heights[i],footprint=Math.max(0.015,f.shoreSlope[i]*Math.max(f.dx,f.dz)*0.65);
@@ -97,8 +100,28 @@ export class CoastHistory {
     this.time += dt; this.clock = this.time * this.field.omega;
     const f = this.field, ocean = this.ocean, angle = ocean.direction * Math.PI / 180, tx = -Math.sin(angle), tz = Math.cos(angle);
     const decay = Math.exp(-dt / ocean.foamPersistence), dry = Math.exp(-dt / ocean.dryingTime);
+    const reference=historyWaveReference();
+    const key=[ocean.direction,ocean.wavelength,ocean.level,ocean.amplitude,ocean.breaker,ocean.swash].join(':');
+    if(key!==this.waveKey){
+      for(let r=0;r<f.rows;r++)for(let c=0;c<f.columns;c++){
+        const i=r*f.columns+c,x=c*f.dx-f.width/2,z=r*f.dz-f.depth/2;
+        this.waves.set(i,f.phase[i],x*tx+z*tz,TAU/ocean.wavelength,ocean.level-f.heights[i],f.packed[i*4+3],ocean.amplitude,ocean.breaker,ocean.swash);
+      }
+      this.waveKey=key;
+    }
     for (let r = 0; r < f.rows; r++) for (let c = 0; c < f.columns; c++) {
-      const i = r * f.columns + c, x = c * f.dx - f.width/2, z = r * f.dz - f.depth/2, along = x * tx + z * tz;
+      const i = r * f.columns + c, x = c * f.dx - f.width/2, z = r * f.dz - f.depth/2,depth=ocean.level-f.heights[i];
+      // Residual offshore foam used to disable the quiet-cell shortcut forever:
+      // tiny advected values then triggered full swell solves over deep water.
+      // Here near-shore velocity and every source/deposit term are exactly zero;
+      // retain the same phase-driven drift and decay without evaluating swells.
+      if(!reference&&this.quiet[i]&&Math.abs(depth)>=2.5){
+        const drift=.08*Math.sin(f.phase[i]-this.clock);
+        const old=bilinear(this.foam,f.columns,f.rows,c-tx*drift*dt/f.dx,r-tz*drift*dt/f.dz);
+        this.nextFoam[i]=clamp(old*decay,0,.85);this.wet[i]*=dry;
+        this.pixels[i*4]=Math.round(this.nextFoam[i]*255);this.pixels[i*4+1]=Math.round(this.wet[i]*255);
+        this.pixels[i*4+2]=depth>0?255:0;this.pixels[i*4+3]=255;continue;
+      }
       // No possible wave/foam/wetness source here. Still evaluate cells containing
       // residual foam or a neighbor that could advect into them. A fixed step's
       // maximum backtrace is < one cell for every supported site/control value.
@@ -107,7 +130,10 @@ export class CoastHistory {
         for(let rr=Math.max(0,r-1);rr<=Math.min(f.rows-1,r+1)&&empty;rr++) for(let cc=Math.max(0,c-1);cc<=Math.min(f.columns-1,c+1);cc++) if(this.foam[rr*f.columns+cc]!==0){empty=false;break;}
         if(empty){this.nextFoam[i]=0;this.pixels[i*4]=0;this.pixels[i*4+1]=0;this.pixels[i*4+2]=f.heights[i]<ocean.level?255:0;this.pixels[i*4+3]=255;continue;}
       }
-      const sample = coastSample(ocean, f.phase[i], f.packed[i*4+3], f.heights[i], this.clock, along), depth = ocean.level - f.heights[i];
+      const wave=reference
+        ? coastalWave(f.phase[i],x*tx+z*tz,this.clock,TAU/ocean.wavelength,depth,f.packed[i*4+3],ocean.amplitude,ocean.breaker,ocean.swash)
+        : this.waves.sample(i,this.clock);
+      const sample={...wave,p:f.phase[i]-this.clock,thickness:depth+wave.height};
       const near = 1 - smooth(0.5, 2.5, Math.abs(depth)), velocity = sample.crest * ocean.amplitude * (1.5 + ocean.swash) * near;
       const vx = f.shoreX[i] * velocity + tx * 0.08 * Math.sin(sample.p), vz = f.shoreZ[i] * velocity + tz * 0.08 * Math.sin(sample.p);
       const old = bilinear(this.foam, f.columns, f.rows, c - vx * dt / f.dx, r - vz * dt / f.dz);

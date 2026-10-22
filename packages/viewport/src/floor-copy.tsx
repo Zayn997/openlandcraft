@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -23,12 +23,26 @@ export function FloorCopyAnchor({project,id,element}:{project:Project;id:string;
   const {camera,size}=useThree();
   const bounds=useMemo(()=>scopeBounds(project,id),[project,id]);
   const point=useMemo(()=>new THREE.Vector3(),[]);
+  const panelSize=useRef({width:220,height:120});
+  useEffect(()=>{
+    const panel=element.current;
+    if(!panel)return;
+    const observer=new ResizeObserver(([entry])=>{
+      panelSize.current={width:entry.target.clientWidth,height:entry.target.clientHeight};
+    });
+    observer.observe(panel);
+    return()=>observer.disconnect();
+  },[element,id]);
   useFrame(()=>{
-    if(!bounds||!element.current)return;
+    const panel=element.current;
+    if(!panel)return;
+    if(!bounds){panel.style.visibility='hidden';return;}
     point.set(bounds.max[0],bounds.max[1]+0.7,(bounds.min[2]+bounds.max[2])/2).project(camera);
-    const x=Math.min(Math.max(14,(point.x+1)*size.width/2+14),Math.max(14,size.width-240));
-    const y=Math.min(Math.max(122,(1-point.y)*size.height/2),Math.max(122,size.height-230));
-    element.current.style.transform=`translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    panel.style.visibility=point.z < -1 || point.z > 1 ? 'hidden':'visible';
+    const maxX=Math.max(14,size.width-panelSize.current.width-14);
+    const x=Math.min(Math.max(Math.min(70,maxX),(point.x+1)*size.width/2+14),maxX);
+    const y=Math.min(Math.max(14,(1-point.y)*size.height/2),Math.max(14,size.height-panelSize.current.height-14));
+    panel.style.transform=`translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   });
   return null;
 }

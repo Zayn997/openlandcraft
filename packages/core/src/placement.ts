@@ -1,8 +1,18 @@
 import { groundHeight, type Entity, type Instance, type Level, type Project } from './model';
 import { evaluateProject } from './surface';
 import {detachedInstance} from './regions';
+import type { Asset } from './assets';
 
 export const snap = (value: number, step = 0.5) => Math.round(value / step) * step;
+
+/** Place a ground-anchored library object, retaining its source dimensions. */
+export function createPlacedInstance(project: Project, asset: Asset, x: number, z: number, snapping: boolean, id: string = crypto.randomUUID()): Instance {
+  if (![x, z].every(Number.isFinite) || Math.abs(x) > project.site.width / 2 || Math.abs(z) > project.site.depth / 2) throw new Error('Choose a point inside the site.');
+  const count = project.entities.filter(entity => entity.kind === 'instance' && entity.assetId === asset.id).length;
+  return { id, parentId: 'site', kind: 'instance', visible: true, name: `${asset.name.slice(0, 65)}${count ? ` ${count + 1}` : ''}`, assetId: asset.id,
+    position: [Math.max(-project.site.width / 2, Math.min(project.site.width / 2, snapping ? snap(x) : x)), 0, Math.max(-project.site.depth / 2, Math.min(project.site.depth / 2, snapping ? snap(z) : z))],
+    rotation: 0, scale: [1, 1, 1], anchor: 'terrain' };
+}
 export function instancePosition(entity: Instance, project: Project): [number, number, number] {
   const [x, y, z] = entity.position;
   return [x, entity.anchor === 'terrain' ? groundHeight(x, z, project.site) + y : y, z];
@@ -26,7 +36,9 @@ export function scatterInstances(source: Instance, count: number, radius: number
   const random = () => { state = (Math.imul(1664525, state) + 1013904223) >>> 0; return state / 4294967296; };
   return Array.from({ length: count }, (_, index) => {
     const angle = random() * Math.PI * 2, distance = Math.sqrt(random()) * radius, scale = 0.8 + random() * 0.4;
+    const dx=Math.cos(angle)*distance,dz=Math.sin(angle)*distance;
     return { ...detachedInstance(source), id: `${prefix}-${index}`, name: `${source.name.slice(0, 65)} ${index + 1}`, position: [source.position[0] + Math.cos(angle) * distance, source.position[1], source.position[2] + Math.sin(angle) * distance], rotation: random() * 360,
+      ...(source.walkingRoute ? {walkingRoute:{...source.walkingRoute,points:source.walkingRoute.points.map(p=>[p[0]+dx,p[1]+dz] as [number,number])}} : {}),
       scale: source.scale.map((value) => Math.min(20, Math.max(0.05, value * scale))) as Instance['scale'] };
   });
 }

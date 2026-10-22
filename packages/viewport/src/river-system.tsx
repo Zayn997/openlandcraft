@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Project, River } from '@openlandcraft/core';
 import { RiverHistory } from './river-water';
+import {startWork,endWork} from './frame-profile';
 
 type RiverResources={simulation:RiverHistory;history:THREE.DataTexture;map:THREE.DataTexture};
 const Context=createContext<RiverResources|null>(null);
@@ -30,8 +31,10 @@ export function RiverSystem({site,river,playing,preview,transient,children}:{sit
     if(!resources||!river)return;
     resources.simulation.river=river;
     if(!playing)return;
+    const start=startWork();
     if(transient)resources.simulation.advanceClock(delta);
     else if(resources.simulation.advance(delta))resources.history.needsUpdate=true;
+    endWork('river-history',start);
   },-1);
   return <Context.Provider value={resources}>{children}</Context.Provider>;
 }

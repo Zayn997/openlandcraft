@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { clipPathPolygon, pathStrips, polygonArea, type PathPoint } from '@openlandcraft/landscape';
+import { clipPathPolygon, pathStrips, polygonArea, roundedRoutePoints, type PathPoint } from '@openlandcraft/landscape';
 import type { Path, Project } from '@openlandcraft/core';
 
 export const PATH_LIFT = 0.035;
 export type PathMesh = { geometry: THREE.BufferGeometry; samples: { indices: [number, number, number]; weights: [number, number, number] }[] };
 
 /** Clip the route to terrain triangles once; height edits only update vertex Y. */
-export function buildPathMesh(path: Path, site: Project['site']): PathMesh {
+export function buildPathMesh(path: Pick<Path,'points'|'width'|'cornerRounding'>, site: Project['site']): PathMesh {
+  path={...path,points:roundedRoutePoints(path),cornerRounding:undefined};
   const positions: number[] = [], uvs: number[] = [], samples: PathMesh['samples'] = [];
   const { columns, rows } = site.terrain, dx = site.width / (columns - 1), dz = site.depth / (rows - 1);
   let along = 0;

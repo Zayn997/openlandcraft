@@ -1,0 +1,80 @@
+[
+  {
+    "id": "pine",
+    "name": "Pine",
+    "source": "tree_pineRoundA.glb",
+    "category": "Trees",
+    "height": 5.0,
+    "triangles": 204,
+    "sourceFaces": 204,
+    "sourceBytes": 14488,
+    "bytes": 13744,
+    "url": "/models/plants/pine.glb",
+    "thumbnail": "/models/plants/pine.png"
+  },
+  {
+    "id": "oak",
+    "name": "Oak",
+    "source": "tree_oak.glb",
+    "category": "Trees",
+    "height": 5.5,
+    "triangles": 196,
+    "sourceFaces": 196,
+    "sourceBytes": 14644,
+    "bytes": 14028,
+    "url": "/models/plants/oak.glb",
+    "thumbnail": "/models/plants/oak.png"
+  },
+  {
+    "id": "palm",
+    "name": "Palm",
+    "source": "tree_palm.glb",
+    "category": "Trees",
+    "height": 5.0,
+    "triangles": 102,
+    "sourceFaces": 186,
+    "sourceBytes": 13616,
+    "bytes": 7720,
+    "url": "/models/plants/palm.glb",
+    "thumbnail": "/models/plants/palm.png"
+  },
+  {
+    "id": "shrub",
+    "name": "Shrub",
+    "source": "plant_bushDetailed.glb",
+    "category": "Ground cover",
+    "height": 1.2,
+    "triangles": 52,
+    "sourceFaces": 104,
+    "sourceBytes": 10172,
+    "bytes": 5720,
+    "url": "/models/plants/shrub.glb",
+    "thumbnail": "/models/plants/shrub.png"
+  },
+  {
+    "id": "grass",
+    "name": "Grass tuft",
+    "source": "grass_large.glb",
+    "category": "Ground cover",
+    "height": 0.6,
+    "triangles": 112,
+    "sourceFaces": 224,
+    "sourceBytes": 18504,
+    "bytes": 9896,
+    "url": "/models/plants/grass.glb",
+    "thumbnail": "/models/plants/grass.png"
+  },
+  {
+    "id": "flowers",
+    "name": "Yellow flowers",
+    "source": "flower_yellowC.glb",
+    "category": "Flowers",
+    "height": 0.65,
+    "triangles": 66,
+    "sourceFaces": 78,
+    "sourceBytes": 7616,
+    "bytes": 5592,
+    "url": "/models/plants/flowers.glb",
+    "thumbnail": "/models/plants/flowers.png"
+  }
+]

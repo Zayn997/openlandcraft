@@ -10,7 +10,7 @@ import { Editor, createProject, createRiver, evaluateProject, groundHeight, inst
 
 describe('river transactions and storage', () => {
   it('migrates M2 models, heights, visibility and bytes without changes', () => {
-    const current = parseProject(v3); expect(current.version).toBe(15); expect(current.assets).toEqual(v3.assets); expect(current.entities).toEqual(v3.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity)); expect(current.site).toEqual({ ...v3.site, materials: TERRAIN_MATERIAL_DEFAULTS });
+    const current = parseProject(v3); expect(current.version).toBe(18); expect(current.assets).toEqual(v3.assets); expect(current.entities).toEqual(v3.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: 20, wavelength: 10, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity)); expect(current.site).toEqual({ ...v3.site, materials: TERRAIN_MATERIAL_DEFAULTS });
   });
   it('reopens the complete river/building/GLB example with identical source bytes and evaluated ground', async () => {
     const before = parseProject(fullExample), reopened = deserializeProject(serializeProject(before));

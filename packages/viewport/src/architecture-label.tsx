@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef} from 'react';
 import {useFrame} from '@react-three/fiber';
 import * as THREE from 'three';
+import {worldUnitsPerPixel} from './camera-projection';
 
 /** Screen-sized dimensions without a second React DOM root inside the canvas. */
 export function ArchitectureLabel({position,text}:{position:[number,number,number];text:string}) {
@@ -17,9 +18,9 @@ export function ArchitectureLabel({position,text}:{position:[number,number,numbe
   },[text]);
   useEffect(()=>()=>label.texture.dispose(),[label]);
   useFrame(({camera,size})=>{
-    if(!sprite.current||!(camera instanceof THREE.PerspectiveCamera))return;
+    if(!sprite.current)return;
     sprite.current.getWorldPosition(world);
-    const unit=camera.position.distanceTo(world)*2*Math.tan(camera.getEffectiveFOV()*Math.PI/360)/size.height;
+    const unit=worldUnitsPerPixel(camera,world,size.height);
     sprite.current.scale.set(unit*label.width,unit*label.height,1);
   });
   return <sprite ref={sprite} position={position} renderOrder={16} raycast={()=>undefined} userData={{waterCaptureExclude:true}}>

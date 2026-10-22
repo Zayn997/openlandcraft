@@ -16,7 +16,7 @@ export function trochoid(phase:number,chop:number) {
   return {height:Math.cos(theta)+chop*0.5,slope:-Math.sin(theta)/(1-chop*Math.cos(theta))};
 }
 
-export function coastalWave(phase:number,along:number,clock:number,k:number,depth:number,boost:number,amplitude:number,breaker:number,swash:number) {
+export function coastalWave(phase:number,along:number,clock:number,k:number,depth:number,boost:number,amplitude:number,breaker:number,swash:number,shape=trochoid) {
   const near=1-smooth(0.3,3.5,depth),chop=0.14+0.18*near*Math.min(1,breaker);
   const bend=0.24*Math.sin(along*0.075)+0.12*Math.sin(along*0.19);
   const bendSlope=0.018*Math.cos(along*0.075)+0.0228*Math.cos(along*0.19);
@@ -25,7 +25,7 @@ export function coastalWave(phase:number,along:number,clock:number,k:number,dept
   for(const wave of SWELL_BANK){
     const weight=wave.weight*(1-near*Math.min(0.9,(wave.scale-1)*0.5));
     const p=(phase+bend)*wave.scale+along*k*wave.spread*spreadFade-clock*Math.sqrt(wave.scale)+wave.phase;
-    const value=trochoid(p,chop/(1+(wave.scale-1)*0.25));
+    const value=shape(p,chop/(1+(wave.scale-1)*0.25));
     height+=value.height*weight;
     slope+=value.slope*weight*wave.scale;
     cross+=value.slope*weight*(bendSlope*wave.scale+k*wave.spread*spreadFade);

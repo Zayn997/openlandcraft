@@ -1,8 +1,13 @@
+import { FishInstances } from './fish';
+import { GroundCharacterInstances } from './ground-characters';
+import { BirdInstances } from './birds';
+import { plantGrowthScale, PLANT_GROWTH_MS } from './plant-growth';
+import { advancePlantWind, createPlantWind } from './plant-wind';
 import {ArchitectureLabel} from './architecture-label';
 import {buildPartGeometry} from './architecture-geometry';
 import {footprint, wallLength, type Wall} from '@openlandcraft/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { Edges, TransformControls } from '@react-three/drei';
@@ -19,24 +24,71 @@ function ModelCopy({ source, interactive }: { source: THREE.Group; interactive: 
   // Instances borrow geometry/materials; the source component owns disposal.
   return <primitive object={object} dispose={null} />;
 }
-function StaticBatch({ source, instances, project, interactive, onSelect }: { source: THREE.Mesh; instances: Instance[]; project: Project; interactive: boolean; onSelect: (id: string) => void }) {
+function StaticBatch({ source, instances, project, interactive, onSelect, growth, windEnabled, playing }: { windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; source: THREE.Mesh; instances: Instance[]; project: Project; interactive: boolean; onSelect: (id: string) => void }) {
+  const wind = useMemo(() => source.userData.plantWind ? createPlantWind(source) : null, [source]);
+  useEffect(() => () => wind?.dispose(), [wind]);
+  const reducedWind = useRef(false);
+  useEffect(() => {
+    if (!wind) return;
+    const preference = matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => { reducedWind.current = preference.matches; };
+    update(); preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, [wind]);
   const batch = useMemo(() => new THREE.InstancedMesh(source.geometry, source.material, instances.length), [source, instances.length]);
   useLayoutEffect(() => {
     instances.forEach((entity, index) => batch.setMatrixAt(index, instanceMatrix(instancePosition(entity, project), entity.rotation, entity.scale, source.matrixWorld)));
     batch.instanceMatrix.needsUpdate = true; batch.computeBoundingBox(); batch.computeBoundingSphere();
+    if (wind) {
+      const margin = wind.maxDisplacement * Math.max(...instances.flatMap(e => e.scale));
+      batch.boundingBox?.expandByScalar(margin);
+      if (batch.boundingSphere) batch.boundingSphere.radius += margin;
+    }
   }, [batch, instances, project.site.terrain, source]);
+  const animating = useRef<{ index: number; entity: Instance; start: number }[]>([]);
+  useLayoutEffect(() => {
+    const now = performance.now();
+    animating.current = instances.flatMap((entity, index) => {
+      const start = growth?.get(entity.id);
+      return start !== undefined && now - start < PLANT_GROWTH_MS ? [{ index, entity, start }] : [];
+    });
+    // Full-sized bounds above remain conservative throughout growth.
+    for (const { index, entity, start } of animating.current) {
+      const factor = plantGrowthScale(start, now);
+      batch.setMatrixAt(index, instanceMatrix(instancePosition(entity, project), entity.rotation, entity.scale.map(v => v * factor) as Instance['scale'], source.matrixWorld));
+    }
+    if (animating.current.length) batch.instanceMatrix.needsUpdate = true;
+  }, [batch, instances, growth, project.site.terrain, source]);
+  useFrame((_, delta) => {
+    if (wind) {
+      const state = advancePlantWind(wind.uniforms.uPlantWindTime.value, delta, playing ?? true, windEnabled ?? true, reducedWind.current);
+      wind.uniforms.uPlantWindTime.value = state.time;
+      wind.uniforms.uPlantWindEnabled.value = state.strength;
+    }
+    if (!animating.current.length) return;
+    const now = performance.now(), reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    animating.current = animating.current.filter(({ index, entity, start }) => {
+      const factor = reduced ? 1 : plantGrowthScale(start, now);
+      batch.setMatrixAt(index, instanceMatrix(instancePosition(entity, project), entity.rotation, entity.scale.map(v => v * factor) as Instance['scale'], source.matrixWorld));
+      return factor < 1;
+    });
+    batch.instanceMatrix.needsUpdate = true;
+  }, -0.3);
   useEffect(() => () => batch.dispose(), [batch]);
-  return <primitive object={batch} userData={{copyInstanceIds:instances.map(e=>e.id)}} dispose={null} castShadow receiveShadow raycast={interactive ? THREE.InstancedMesh.prototype.raycast : noRaycast} onClick={(event: import('@react-three/fiber').ThreeEvent<MouseEvent>) => {
+  return <primitive object={batch} material={wind?.material ?? source.material} customDepthMaterial={wind?.depth} customDistanceMaterial={wind?.distance} userData={{copyInstanceIds:instances.map(e=>e.id)}} dispose={null} castShadow receiveShadow raycast={interactive ? THREE.InstancedMesh.prototype.raycast : noRaycast} onClick={(event: import('@react-three/fiber').ThreeEvent<MouseEvent>) => {
     if (interactive && event.delta <= 4 && event.instanceId !== undefined && instances[event.instanceId]) { event.stopPropagation(); onSelect(instances[event.instanceId].id); }
   }} />;
 }
-function ModelContent({ source, instances, project, selectedId, selectedIds=[], interactive, onSelect }: { selectedIds?:string[]; source: THREE.Group; instances: Instance[]; project: Project; selectedId: string | null; interactive: boolean; onSelect: (id: string) => void }) {
+function ModelContent({ source, instances, project, selectedId, selectedIds=[], interactive, onSelect, growth, windEnabled, playing }: { windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; selectedIds?:string[]; source: THREE.Group; instances: Instance[]; project: Project; selectedId: string | null; interactive: boolean; onSelect: (id: string) => void }) {
   const meshes = useMemo(() => staticMeshes(source), [source]);
   const selected = instances.filter((entity) => selectedIds.includes(entity.id)||entity.id === selectedId);
-  if (meshes) return <>{meshes.map((mesh) => <StaticBatch key={mesh.uuid} source={mesh} instances={instances} project={project} interactive={interactive} onSelect={onSelect} />)}{selected.map(selected=><group key={selected.id} position={instancePosition(selected, project)} rotation={[0, selected.rotation * Math.PI / 180, 0]} scale={selected.scale}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh></group>)}</>;
+  if (source.userData.groundCharacter) return <GroundCharacterInstances source={source} instances={instances} interactive={interactive} selectedIds={selected.map(e => e.id)} onSelect={onSelect}/>;
+  if (source.userData.fishSwim) return <FishInstances source={source} instances={instances} interactive={interactive} selectedIds={selected.map(e => e.id)} onSelect={onSelect}/>;
+  if (source.userData.birdFlight) return <BirdInstances source={source} instances={instances} project={project} playing={playing ?? true} interactive={interactive} selectedIds={selected.map(e => e.id)} onSelect={onSelect}/>;
+  if (meshes) return <>{meshes.map((mesh) => <StaticBatch key={mesh.uuid} windEnabled={windEnabled} playing={playing} growth={growth} source={mesh} instances={instances} project={project} interactive={interactive} onSelect={onSelect} />)}{selected.map(selected=><group key={selected.id} position={instancePosition(selected, project)} rotation={[0, selected.rotation * Math.PI / 180, 0]} scale={selected.scale}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh></group>)}</>;
   return <>{instances.map((entity) => <group key={entity.id} userData={{copyEntityId:entity.id}} position={instancePosition(entity, project)} rotation={[0, entity.rotation * Math.PI / 180, 0]} scale={entity.scale} onClick={(event) => { if (interactive && event.delta <= 4) { event.stopPropagation(); onSelect(entity.id); } }}><ModelCopy source={source} interactive={interactive} />{(selectedIds.includes(entity.id)||entity.id === selectedId) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh>}</group>)}</>;
 }
-export function ModelInstances({ asset, instances, project, selectedId, selectedIds, onSelect, onError, interactive }: { selectedIds?:string[];
+export function ModelInstances({ asset, instances, project, selectedId, selectedIds, onSelect, onError, interactive, growth, windEnabled, playing }: { windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; selectedIds?:string[];
   asset: Asset; instances: Instance[]; project: Project; selectedId: string | null; onSelect: (id: string) => void; onError: (message: string) => void; interactive: boolean;
 }) {
   const [source, setSource] = useState<THREE.Group | null>(null);
@@ -46,7 +98,7 @@ export function ModelInstances({ asset, instances, project, selectedId, selected
     loadModel(asset).then((root) => { if (!alive) { disposeModel(root); return; } owned = root; setSource(root); }).catch((error: unknown) => { if (alive) onError(`${asset.name}: ${error instanceof Error ? error.message : 'Model could not load.'}`); });
     return () => { alive = false; if (owned) disposeModel(owned); };
   }, [asset.data]);
-  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent source={source} instances={instances} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect} /></group> : null;
+  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={instances} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect} /></group> : null;
 }
 
 function Part({ entity, walls, selected, dimensions, onSelect, onWallPick, onOutlinePick, activeEdit=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; activeEdit?: boolean; blocking?:boolean;interactive:boolean;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {

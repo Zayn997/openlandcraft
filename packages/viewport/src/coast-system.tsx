@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Ocean, Project } from '@openlandcraft/core';
 import { CoastHistory } from './coast';
+import {startWork,endWork} from './frame-profile';
 import { beachAppearanceGLSL } from './coast-appearance';
 import { terrainUniforms, updateTerrainUniforms } from './material-uniforms';
 import { useRiverWater } from './river-system';
@@ -31,8 +32,10 @@ export function CoastSystem({ site, ocean, playing, preview, transient, children
   useFrame((_, delta) => {
     if (!resources || !ocean) return; resources.simulation.ocean = ocean;
     if (!playing || !ocean.visible) return;
+    const start=startWork();
     if (transient) resources.simulation.advanceClock(delta);
     else if (resources.simulation.advance(delta)) resources.history.needsUpdate = true;
+    endWork('ocean-history',start);
   }, -1);
   return <CoastContext.Provider value={resources}>{children}</CoastContext.Provider>;
 }
@@ -74,7 +77,7 @@ export function CoastalTerrainMaterial({site}:{site:Project['site']}) {
   }, [uniforms]);
   useFrame(() => {
     const live = uniforms;
-    updateTerrainUniforms(live,site.materials);updateLakeUniforms(live,lake);
+    updateTerrainUniforms(live,site.materials);updateLakeUniforms(live,lake,empty);
     live.uRiverMap.value=river?.map??empty;live.uRiverHistory.value=river?.history??empty;
     live.uRiverMapGrid.value.set(river?.simulation.field.mapColumns??1,river?.simulation.field.mapRows??1);
     live.uRiverBounds.value.set(site.width,site.depth);live.uRiverGrid.value.set(river?.simulation.field.columns??1,river?.simulation.field.rows??1);live.uWetBank.value=river?.simulation.river.water.wetBank??0;

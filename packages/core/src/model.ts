@@ -1,8 +1,9 @@
 import { layerSchema, layerIssue, defaultLayers } from './layers';
 import { z } from 'zod';
 import { architectureIssue } from './architecture';
-import { createHeightfield, lakeIssue, lakeRiverOverlap, regionIssue, pathIssue, riverIssue, sampleHeight, terrainSchema } from '@openlandcraft/landscape';
+import { createHeightfield, lakeIssue, lakeRiverOverlap, regionIssue, pointSegmentDistance, riverIssue, sampleHeight, terrainSchema, walkingRouteIssue } from '@openlandcraft/landscape';
 import { assetSchema, glbByteLength, MAX_ASSET_BYTES } from './assets';
+import { assetAnimation } from './asset-animation';
 import { terrainMaterialsSchema, waterAppearanceSchema, TERRAIN_MATERIAL_DEFAULTS, WATER_APPEARANCE_DEFAULTS } from './materials';
 import { riverWaterSchema, RIVER_WATER_DEFAULTS } from './river-water';
 
@@ -56,9 +57,13 @@ const legacyRiverSchema = z.object({ ...base, kind: z.literal('river'),
 }).strict();
 const versionSevenRiverSchema = legacyRiverSchema.extend({ appearance: waterAppearanceSchema });
 export const riverSchema = versionSevenRiverSchema.extend({ water: riverWaterSchema });
-export const pathSchema = z.object({ ...base, kind: z.literal('path'), points: z.array(localPoint).min(2).max(16),
+const cornerRounding=z.array(finite.min(0).max(1)).max(16).optional();
+const checkCorners=(route:{points:unknown[];cornerRounding?:number[]},ctx:z.RefinementCtx)=>{
+  if(route.cornerRounding&&(route.cornerRounding.length!==route.points.length||route.cornerRounding[0]!==0||route.cornerRounding.at(-1)!==0))ctx.addIssue({code:'custom',path:['cornerRounding'],message:'Corner rounding must match the anchors, with unrounded endpoints.'});
+};
+export const pathSchema = z.object({ ...base, kind: z.literal('path'), points: z.array(localPoint).min(2).max(16),cornerRounding,
   width: finite.min(0.5).max(8), surface: z.enum(['gravel', 'paving', 'timber']), elevationMode: z.literal('terrain'),
-}).strict();
+}).strict().superRefine(checkCorners);
 const versionEightEntitySchema = z.discriminatedUnion('kind', [blockSchema, oceanSchema, legacyInstanceSchema, legacyLevelSchema, legacyWallSchema, legacySlabSchema, legacyRoofSchema, riverSchema]);
 const versionNineEntitySchema = z.discriminatedUnion('kind', [...versionEightEntitySchema.options, pathSchema]);
 export const lakeSchema = z.object({ ...base, kind:z.literal('lake'), points:z.array(localPoint).min(3).max(24),
@@ -68,7 +73,11 @@ export const lakeSchema = z.object({ ...base, kind:z.literal('lake'), points:z.a
   color,appearance:waterAppearanceSchema,
 }).strict();
 const versionTenEntitySchema=z.discriminatedUnion('kind',[...versionNineEntitySchema.options,lakeSchema]);
-export const instanceSchema=legacyInstanceSchema.extend({regionId:z.string().min(1).max(100).optional()});
+const versionSixteenInstanceSchema=legacyInstanceSchema.extend({regionId:z.string().min(1).max(100).optional(),characterAnimation:z.enum(['auto','walk','idle']).optional()});
+const legacyWalkingRouteSchema=z.object({points:z.array(localPoint).min(2).max(16),width:finite.min(0.5).max(8)}).strict();
+const versionSeventeenInstanceSchema=versionSixteenInstanceSchema.extend({walkingRoute:legacyWalkingRouteSchema.optional()});
+export const walkingRouteSchema=legacyWalkingRouteSchema.extend({cornerRounding}).superRefine(checkCorners);
+export const instanceSchema=versionSixteenInstanceSchema.extend({walkingRoute:walkingRouteSchema.optional()});
 const regionBase={...base,points:z.array(localPoint).min(3).max(16)};
 export const materialRegionSchema=z.object({...regionBase,kind:z.literal('materialRegion'),surface:z.enum(['grass','sand','rock','gravel']),color,roughness:finite.min(0.3).max(1),detailScale:finite.min(0.25).max(4)}).strict();
 export const plantingRegionSchema=z.object({...regionBase,kind:z.literal('plantingRegion'),assetId:z.string().min(1),seed:finite.int().min(0).max(2147483647),density:finite.min(1).max(100),scaleMin:finite.min(0.05).max(5),scaleMax:finite.min(0.05).max(5),spacing:finite.min(0.5).max(15),clearance:finite.min(0).max(10),exclusions:z.object({water:z.boolean(),paths:z.boolean(),buildings:z.boolean()}).strict()}).strict();
@@ -105,7 +114,10 @@ const versionElevenSchema=versionTenSchema.extend({version:z.literal(11),entitie
 const versionTwelveSchema=versionElevenSchema.extend({version:z.literal(12),entities:z.array(versionTwelveEntitySchema).max(1000)});
 const versionThirteenSchema = z.object({ ...envelope, entities:z.array(versionFourteenEntitySchema).max(1000), version: z.literal(13), site: siteSchema.extend({ terrain: terrainSchema, materials: terrainMaterialsSchema }), assets: z.array(assetSchema).max(16) }).strict();
 const versionFourteenSchema = versionThirteenSchema.extend({ version: z.literal(14), layers: z.array(layerSchema).min(1).max(256), objectLayers: z.record(z.string(), z.string()), activeLayerId: z.string().nullable() });
-export const projectSchema = versionFourteenSchema.extend({version:z.literal(15),entities:z.array(entitySchema).max(1000)}).superRefine((project, ctx) => {
+const versionFifteenSchema = versionFourteenSchema.extend({version:z.literal(15),entities:z.array(entitySchema).max(1000)});
+const versionSixteenSchema = versionFifteenSchema.extend({version:z.literal(16),entities:z.array(z.discriminatedUnion('kind',[blockSchema,oceanSchema,versionSixteenInstanceSchema,levelSchema,wallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema])).max(1000)});
+const versionSeventeenSchema=versionFifteenSchema.extend({version:z.literal(17),entities:z.array(z.discriminatedUnion('kind',[blockSchema,oceanSchema,versionSeventeenInstanceSchema,levelSchema,wallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema])).max(1000)});
+export const projectSchema = versionFifteenSchema.extend({version:z.literal(18)}).superRefine((project, ctx) => {
   const layersError = layerIssue(project, new Set(['terrain', ...project.entities.map(e => e.id)]));
   if (layersError) ctx.addIssue({code:'custom',path:['layers'],message:layersError});
   const architectureError=architectureIssue(project.entities);
@@ -156,8 +168,9 @@ export const projectSchema = versionFourteenSchema.extend({version:z.literal(15)
   if (assetIds.size !== project.assets.length) ctx.addIssue({ code: 'custom', path: ['assets'], message: 'Asset IDs must be unique.' });
   if (project.assets.reduce((sum, asset) => sum + glbByteLength(asset.data), 0) > MAX_ASSET_BYTES) ctx.addIssue({ code: 'custom', path: ['assets'], message: 'The asset library exceeds 24 MB.' });
   project.entities.forEach((entity, index) => {
+    if (entity.kind === 'instance' && entity.walkingRoute) { const issue = walkingRouteIssue(entity.walkingRoute,project.site); if (issue) ctx.addIssue({code:'custom',path:['entities',index,'walkingRoute'],message:issue}); }
     if(entity.kind==='lake'){const issue=lakeIssue(entity,project.site,project.site.terrain);if(issue)ctx.addIssue({code:'custom',path:['entities',index,'points'],message:issue});}
-    if (entity.kind === 'path') { const issue = pathIssue(entity, project.site); if (issue) ctx.addIssue({ code: 'custom', path: ['entities', index, 'points'], message: issue }); }
+    if (entity.kind === 'path') { const issue = walkingRouteIssue(entity, project.site); if (issue) ctx.addIssue({ code: 'custom', path: ['entities', index, 'points'], message: issue }); }
     if (entity.kind === 'river') { const issue = riverIssue(entity, project.site, project.site.terrain); if (issue) ctx.addIssue({ code: 'custom', path: ['entities', index, 'points'], message: issue }); }
     if (entity.kind === 'instance' && !assetIds.has(entity.assetId)) ctx.addIssue({ code: 'custom', path: ['entities', index, 'assetId'], message: 'The embedded model is missing.' });
     if (entity.parentId !== 'site' && !project.entities.some((level) => level.id === entity.parentId && level.kind === 'level')) ctx.addIssue({ code: 'custom', path: ['entities', index, 'parentId'], message: 'Building elements must belong to an existing level.' });
@@ -169,6 +182,7 @@ export const projectSchema = versionFourteenSchema.extend({version:z.literal(15)
 export type Block = z.infer<typeof blockSchema>;
 export type Ocean = z.infer<typeof oceanSchema>;
 export type Instance = z.infer<typeof instanceSchema>;
+export type WalkingRoute = z.infer<typeof walkingRouteSchema>;
 export type MaterialRegion=z.infer<typeof materialRegionSchema>;
 export type PlantingRegion=z.infer<typeof plantingRegionSchema>;
 export type Region=MaterialRegion|PlantingRegion;
@@ -228,6 +242,18 @@ export function parseProject(value: unknown): Project {
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===12){const legacy=versionTwelveSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:13};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===13){const legacy=versionThirteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:14,layers:defaultLayers(),objectLayers:{},activeLayerId:'default'};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===14){const legacy=versionFourteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:15};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===15){const legacy=versionFifteenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:16};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===16){
+    const legacy=versionSixteenSchema.safeParse(candidate);
+    if(legacy.success){
+      const path=legacy.data.entities.filter(entity=>entity.visible).find(entity=>entity.kind==='path');
+      const people=new Set(legacy.data.assets.filter(asset=>assetAnimation(asset)==='person-walk-v1').map(asset=>asset.id));
+      candidate={...legacy.data,version:17,entities:legacy.data.entities.map(entity=>entity.kind==='instance'&&people.has(entity.assetId)&&path&&(entity.characterAnimation==='walk'||path.points.slice(1).some((point,i)=>pointSegmentDistance([entity.position[0],entity.position[2]],path.points[i],point)<=Math.max(5,path.width/2+2)))
+        ? {...entity,walkingRoute:{points:path.points.map(point=>[...point]),width:path.width}}
+        : entity)};
+    }
+  }
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===17){const legacy=versionSeventeenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:18};}
   const result = projectSchema.safeParse(candidate);
   if (!result.success) {
     const issue = result.error.issues[0];

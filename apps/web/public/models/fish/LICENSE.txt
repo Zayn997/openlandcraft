@@ -1,0 +1,8 @@
+Fish by joyfulsquirrel
+Source: https://opengameart.org/content/fish-1
+Source archive: https://opengameart.org/sites/default/files/fish_5.zip
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+Retrieved 2026-10-21. The author's source page explicitly licenses this model under CC0.
+Reshaped with a streamlined body, forked tail, small lateral eyes, silver-green vertex colors and a seven-bone swimming rig in Blender for OpenLandcraft.
+Attribution is optional. This source record is retained for provenance.

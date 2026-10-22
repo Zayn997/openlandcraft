@@ -1,6 +1,7 @@
 import { groundHeight, type Project, type River } from '@openlandcraft/core';
 import { sampleRiver } from '@openlandcraft/landscape';
 import { coastalWave } from './coastal-waves';
+import {HistoryWaves,historyWaveReference} from './history-wave';
 import { smooth } from './coast';
 
 const clamp = (x:number,a=0,b=1) => Math.max(a,Math.min(b,x));
@@ -75,10 +76,12 @@ export class RiverHistory {
   readonly field:RiverField;
   readonly foam:Float32Array;readonly wet:Float32Array;readonly pixels:Uint8Array;
   private next:Float32Array;private accumulator=0;
+  private waves:HistoryWaves;private waveKey='';
   time=0;clock=0;
   constructor(site:Project['site'],public river:River) {
     this.field=buildRiverField(site,river);const n=this.field.depths.length;
     this.foam=new Float32Array(n);this.next=new Float32Array(n);this.wet=new Float32Array(n);this.pixels=new Uint8Array(n*4);
+    this.waves=new HistoryWaves(n);
   }
   clearHistory(){this.foam.fill(0);this.next.fill(0);this.wet.fill(0);this.pixels.fill(0);}
   advanceClock(delta:number){
@@ -93,9 +96,18 @@ export class RiverHistory {
   }
   private step(dt:number) {
     this.time+=dt;const f=this.field,w=this.river.water,decay=Math.exp(-dt/w.foamPersistence),dry=Math.exp(-dt/w.dryingTime);
+    const reference=historyWaveReference();
+    const key=String(w.amplitude);
+    if(key!==this.waveKey){
+      for(let i=0;i<f.depths.length;i++){
+        const row=Math.floor(i/f.columns),across=(i%f.columns)*f.dc-f.reach;
+        this.waves.set(i,f.profile[row*4],across,f.k,f.depths[i],f.profile[row*4+1],w.amplitude,1.25,.6);
+      }
+      this.waveKey=key;
+    }
     for(let i=0;i<f.depths.length;i++) {
       const row=Math.floor(i/f.columns),col=i%f.columns,depth=f.depths[i];
-      const wave=depth < -w.amplitude*0.9 ? null : riverWave(f,this.river,i,this.time);
+      const wave=depth < -w.amplitude*0.9 ? null : reference?riverWave(f,this.river,i,this.time):this.waves.sample(i,this.time*f.omega);
       const thickness=depth+(wave?.height??0);
       const old=sample(this.foam,f.columns,f.rows,col-f.lateral[i]*dt/f.dc,row-f.velocity[i]*dt/f.ds);
       const covered=thickness>0.008;

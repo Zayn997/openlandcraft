@@ -1,3 +1,4 @@
+import {waterProjectionUniforms,waterDepthProjection} from './water-projection';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -13,6 +14,7 @@ import { useRiverWater } from './river-system';
 import { riverGeometry, riverPickGeometry, updateRiverProfile } from './river-geometry';
 import {InlandVolume,inlandUndersideGLSL} from './inland-volume';
 import {sampleRiverVolume} from './inland-sampling';
+import {worldUnitsPerPixel} from './camera-projection';
 import {coastSample,smooth} from './coast';
 
 const vertexShader = /* glsl */`
@@ -81,9 +83,9 @@ export function PointNumber({ number }: { number: number }) {
   const sprite = useRef<THREE.Sprite>(null);
   const world = useMemo(() => new THREE.Vector3(), []);
   useFrame(({ camera, size }) => {
-    if (!sprite.current || !(camera instanceof THREE.PerspectiveCamera)) return;
+    if (!sprite.current) return;
     sprite.current.getWorldPosition(world);
-    const scale = camera.position.distanceTo(world) * 2 * Math.tan(camera.getEffectiveFOV() * Math.PI / 360) / size.height * 19;
+    const scale = worldUnitsPerPixel(camera,world,size.height)*19;
     sprite.current.scale.set(scale, scale, 1);
   });
   const texture = useMemo(() => {
@@ -125,7 +127,7 @@ export function RiverLayer({ river, project, selected, editor, quality, enabled,
     const candidates:THREE.Intersection[]=[];picker.raycast(raycaster,candidates);
     for(const hit of candidates)if(groundHeight(hit.point.x,hit.point.z,project.site)<hit.point.y+0.05)hits.push({...hit,object:surface.current});
   };
-  const uniforms=useMemo(()=>({...appearanceUniforms(),uRiverHistory:{value:engine.history},uRiverGrid:{value:new THREE.Vector2()},uRiverReach:{value:1},uRiverLength:{value:1},uRiverK:{value:1},uRiverOmega:{value:1},uRiverAmplitude:{value:0},uTime:{value:0},uColor:{value:new THREE.Color()},uOceanColor:{value:new THREE.Color()},uOceanAppearance:{value:new THREE.Vector3(1,.3,1)},uMouth:{value:new THREE.Vector3()},
+  const uniforms=useMemo(()=>({...appearanceUniforms(),...waterProjectionUniforms(),uRiverHistory:{value:engine.history},uRiverGrid:{value:new THREE.Vector2()},uRiverReach:{value:1},uRiverLength:{value:1},uRiverK:{value:1},uRiverOmega:{value:1},uRiverAmplitude:{value:0},uTime:{value:0},uColor:{value:new THREE.Color()},uOceanColor:{value:new THREE.Color()},uOceanAppearance:{value:new THREE.Vector3(1,.3,1)},uMouth:{value:new THREE.Vector3()},
     uGround:{value:groundTexture},uGrid:{value:new THREE.Vector2()},uSite:{value:new THREE.Vector2()},uLevel:{value:0},uCoastField:{value:groundTexture},uCoastHistory:{value:groundTexture},uCoastGrid:{value:new THREE.Vector2(1,1)},
     uPhase:{value:0},uAmplitude:{value:0},uDirection:{value:new THREE.Vector2(1,0)},uSwash:{value:0},uBreaker:{value:0},uWaveNumber:{value:1},
     uSceneColor:{value:groundTexture},uSceneDepth:{value:groundTexture},uSky:{value:null},uResolution:{value:new THREE.Vector2()},uNearFar:{value:new THREE.Vector2(.1,1500)}}),[]);
@@ -134,7 +136,7 @@ export function RiverLayer({ river, project, selected, editor, quality, enabled,
     updateAppearanceUniforms(u as ReturnType<typeof appearanceUniforms>,river.appearance);u.uTime.value=engine.simulation.clock;
     const f=engine.simulation.field;u.uRiverHistory.value=engine.history;u.uRiverGrid.value.set(f.columns,f.rows);u.uRiverReach.value=f.reach;u.uRiverLength.value=f.length;u.uRiverK.value=f.k;u.uRiverOmega.value=f.omega;u.uRiverAmplitude.value=river.water.amplitude;u.uColor.value.set(river.color);
     u.uMouth.value.set(mouth.start,mouth.end,Number(mouth.enabled));u.uGround.value=groundTexture;u.uGrid.value.set(project.site.terrain.columns,project.site.terrain.rows);u.uSite.value.set(project.site.width,project.site.depth);
-    u.uSceneColor.value=optics.target.texture;u.uSceneDepth.value=optics.target.depthTexture;u.uSky.value=optics.sky;gl.getDrawingBufferSize(u.uResolution.value);u.uNearFar.value.set(camera.near,camera.far);
+    u.uSceneColor.value=optics.target.texture;u.uSceneDepth.value=optics.target.depthTexture;u.uSky.value=optics.sky;gl.getDrawingBufferSize(u.uResolution.value);u.uNearFar.value.set(camera.near,camera.far);waterDepthProjection(camera,u.uDepthProjection.value);
     if(ocean?.kind==='ocean'&&coast){
       u.uLevel.value=ocean.level;u.uPhase.value=coast.simulation.clock;u.uAmplitude.value=ocean.amplitude;u.uSwash.value=ocean.swash;u.uBreaker.value=ocean.breaker;u.uWaveNumber.value=Math.PI*2/ocean.wavelength;
       const angle=ocean.direction*Math.PI/180;u.uDirection.value.set(Math.cos(angle),Math.sin(angle));u.uCoastField.value=coast.field;u.uCoastHistory.value=coast.history;u.uCoastGrid.value.set(coast.simulation.field.columns,coast.simulation.field.rows);

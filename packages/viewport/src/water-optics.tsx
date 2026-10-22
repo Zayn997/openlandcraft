@@ -3,6 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { coastalSkyGLSL } from './coast-appearance';
 import { opticsSize } from './optics-budget';
+import { renderWaterFrame } from './water-render';
+import {finishFrameWork} from './frame-profile';
 
 type Optics = { target: THREE.WebGLRenderTarget; sky: THREE.CubeTexture; inlandUnderwater:boolean };
 const Context = createContext<Optics | null>(null);
@@ -48,16 +50,10 @@ export function WaterOptics({ enabled, immersive, quality, children }: { enabled
   useLayoutEffect(() => {
     resources.target.setSize(...opticsSize(size.width,size.height,gl.getPixelRatio(),quality));
   }, [resources, gl, size.width, size.height, quality]);
-  useFrame(() => {
-    resources.inlandUnderwater=false;
-    if (!enabled) return;
-    const hidden: THREE.Object3D[] = [];
-    scene.traverse((object) => { if (object.visible && (object.userData.waterSurface || object.userData.waterCaptureExclude)) { hidden.push(object); object.visible = false; } });
-    const previous = gl.getRenderTarget(), updateShadows = gl.shadowMap.autoUpdate, xr = gl.xr.enabled;
-    // Shadows are refreshed in the main render, never twice in one frame.
-    gl.shadowMap.autoUpdate = false; gl.xr.enabled = false;
-    try { gl.setRenderTarget(resources.target); gl.clear(); gl.render(scene, camera); }
-    finally { gl.setRenderTarget(previous); gl.shadowMap.autoUpdate = updateShadows; gl.xr.enabled = xr; hidden.forEach((object) => { object.visible = true; }); }
-  }, -0.25);
+  // Inland volume callbacks set this after the reset and before the final render.
+  useFrame(() => { resources.inlandUnderwater = false; }, -0.25);
+  // Own the final render so shadows run once, before capture, after all camera,
+  // simulation and plant-growth updates. Positive priority disables R3F's extra render.
+  useFrame(() => { renderWaterFrame(gl, scene, camera, enabled ? resources.target : null);finishFrameWork(); }, 1);
   return <Context.Provider value={resources}>{children}</Context.Provider>;
 }

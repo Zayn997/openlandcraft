@@ -1,6 +1,7 @@
 import { z } from 'zod';
 export * from './river';
 export * from './path';
+export * from './rounded-route';
 export * from './lake';
 
 export const MIN_HEIGHT = -9;

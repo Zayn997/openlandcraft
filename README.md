@@ -6,6 +6,20 @@ The first demonstration is a small site with sculpted hills, an editable winding
 
 ## Project status
 
+**M8 is active as of October 22, 2026**, at the user's direction after the UI, animation, route and water-volume refinements. Work starts with repeatable performance measurements before expanding supported limits. Remaining M7 modeling items are still tracked in the [roadmap](docs/ROADMAP.md#m8-larger-environments-from-measured-limits). Earlier dated records below describe their status at implementation time.
+
+The [initial M8 baseline](docs/M8_BASELINE.md) includes reproducible vegetation, walking-character and combined coastal workloads, CPU persistence measurements and browser evidence. Supported scene limits remain unchanged.
+
+The [full-app M8 profile](docs/M8_APP_PROFILE.md) combines 500 plants, 12 walking people and water. It fixes periodic editor-wide FPS renders, a removed-lake texture leak, and wasted starter-scene rendering during saved-project startup. It records loading phases, JS heap and renderer resource counts with repeatable unload/reload checks; broader performance and memory validation remains open.
+
+The [per-frame M8 profile](docs/M8_FRAME_PROFILE.md) addresses CPU water histories, route-turn stalls and the horse's padded Walk loop. The dense scene reached 59–60 FPS in a short run and 40–58 FPS in extended playback; further stability and broader validation remain M8 work. Existing saved horses receive the continuous-gait fix on load.
+
+The viewport toolbar has a **3D / Axo** switch. 3D uses perspective; Axo uses parallel projection with an isometric starting angle. Switching preserves the current orbit center and apparent scale. Pan, zoom, orbit, standard views, framing, labels and picking work in both projections; shore and underwater views use perspective.
+
+Water depth decoding follows the active camera projection, so ocean cut faces retain their volume in Axo. The shared ocean, river and lake optics use parallel eye rays in orthographic views and perspective rays in 3D. Returning from a water Dive to Axo restores editing-scale framing. The [river/lake projection check](docs/INLAND_WATER_VOLUME_VALIDATION.md#october-22-2026-pre-m8-projection-check) records the pre-M8 volume verification.
+
+Landscape paths and personal walking routes support corner fillets: after drawing, click a numbered interior anchor to open a compact slider and percentage beside that point in the viewer. Landscape surfaces curve with the control; saved source anchors stay editable. Set the slider to 0% for a sharp corner. Click outside the popup or press Escape to close it. The control also works while drawing, supports one-step undo, and limits rounding to fit the width and adjacent segments. Format 18 preserves corner settings and upgrades existing projects.
+
 Architecture menu creation added October 20, 2026: **Add… → Architecture → Wall / Floor / Roof**, then choose **Drawing level** in Properties or **Add blank level**. Click corners and finish the wall chain or closed surface outline. The tools show live segment lengths, endpoint/grid snapping, cancellation and repeated creation with one undo step per finished drawing. Floors and flat roofs expose base offset and thickness. Pitched roof creation and reusable types/materials remain planned.
 
 Automatic wall joins added October 20, 2026: choose **Architecture → Wall**, choose a level and wall thickness, then snap to an existing endpoint or the middle of a joined wall. Mixed-thickness corners miter; interior T connections trim to the host face. Walls remain individually editable, with independent thicknesses and preserved opening IDs. Moving a host carries its attached endpoints; moving a branch off its host detaches it. Preview, undo/redo, copied assemblies and version-15 saving preserve connections. Connections require matching base/height (inherited while drawing) and angles of at least 30°. Crossing-wall splitting and three-way endpoint junctions remain unsupported. See [wall-join validation](docs/M7B_WALL_JOINS_VALIDATION.md).

@@ -13,7 +13,7 @@ export function RegionTools({type,onType,editor,onSelect,onDraw,onAdd,drawing,ch
     <div id="region-type-panel" role="tabpanel" aria-labelledby={`region-type-${type}`}>
       {children??<div className="water-create"><h3>{type==='material'?'Define a ground surface':'Grow a planting area'}</h3><p>{type==='material'?'Draw an area of grass, sand, rock, or gravel. It follows the terrain without changing its heights.':'Draw an area, choose a model, and preview seeded planting around your water, paths, and buildings.'}</p>
         <Button variant="default" className="primary-button" disabled={drawing||full||needsModel} onClick={onDraw}>{drawing?'Drawing in viewport…':`Draw ${type==='material'?'surface':'planting'} region`}</Button><button className="water-starter" disabled={drawing||full||needsModel} onClick={onAdd}><Plus size={15}/>Add starter region</button>
-        {needsModel&&<p role="status">Add a Demo tree or import a model first.</p>}{full&&<p role="status">Eight regions reached. Edit or remove an existing region.</p>}
+        {needsModel&&<p role="status">Place a plant from Assets or import a model first.</p>}{full&&<p role="status">Eight regions reached. Edit or remove an existing region.</p>}
         <FieldMessage>{drawing?'Click at least three boundary points, then Finish region.':'Up to eight regions. Preview changes before applying.'}</FieldMessage>
         {regions.filter(r=>r.kind===(type==='material'?'materialRegion':'plantingRegion')).map(r=><button key={r.id} className="part-link" onClick={()=>onSelect(r.id)}>{r.name}<span>Edit</span></button>)}
       </div>}

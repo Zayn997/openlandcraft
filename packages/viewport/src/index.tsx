@@ -1,8 +1,14 @@
-import { layerDisplayProject, objectLayerState, canEditObject } from '@openlandcraft/core';
+import { FishSchoolProvider } from './fish-school-provider';
+import { GroundCharacterProvider } from './ground-characters';
+import { LibraryPlacementPreview } from './plant-preview';
+import { usePlantBrush, type PlantBrushOptions } from './plant-brush';
+import { layerDisplayProject, objectLayerState, canEditObject, characterWalkingPath, ROUND_ROUTE_GESTURE, ROUND_PATH_GESTURE } from '@openlandcraft/core';
 import {DragCopy, type CopyResult} from './drag-copy';
 import { TerrainClosure } from './terrain-solid';
 import {OutlineEdit, type OutlineEditProps} from './outline-edit';
 import { cameraFlight } from './camera-flight';
+import {projectionCamera,fitOrthographicCamera,preserveProjectionFraming,type CameraProjection} from './camera-projection';
+export type {CameraProjection} from './camera-projection';
 import { orbitPosition, orientationPosition, type CameraView, type OrientationView } from './navigation';
 import { ViewNavigator, type NavigationBridge } from './view-navigator';
 export type { CameraView } from './navigation';
@@ -17,10 +23,11 @@ import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useSt
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { evaluateProject, isRegion, groundHeight, instancePosition, type Block, type Project, type Editor, type BuildingPart, type Instance } from '@openlandcraft/core';
-import { TerrainStroke, type BrushSettings, type RiverPoint, type PathPoint } from '@openlandcraft/landscape';
+import { evaluateProject, isBirdAsset, isFishAsset, isGroundCharacterAsset, fishSchools, isRegion, groundHeight, instancePosition, type Block, type Project, type Editor, type BuildingPart, type Instance } from '@openlandcraft/core';
+import { TerrainStroke, roundedRoutePoints, type BrushSettings, type RiverPoint, type PathPoint } from '@openlandcraft/landscape';
 import { RiverDraft, RiverLayer } from './river';
 import { PathDraft, PathLayer } from './path';
+import { useDrawingClick } from './drawing-gesture';
 import {LakeLayer,LakeDraft} from './lake';
 import {RegionLayer,RegionDraft} from './region';
 import {LakeSystem} from './lake-system';
@@ -39,8 +46,15 @@ import { BuildingLevel, ModelInstances, TransformGizmo, type TransformMode } fro
 export { validateModels } from './models';
 export type { TransformMode } from './objects';
 
-export type ViewportMetrics = { fps: number; calls: number; triangles: number; renderer: string };
+export type ViewportMetrics = { fps: number; calls: number; triangles: number; renderer: string;
+  resources?:{geometries:number;textures:number;programs:number};
+  buffer?:{width:number;height:number;dpr:number};
+};
 type Props = {
+  plantAsset?: import('@openlandcraft/core').Asset | null;
+  plantGrowth?: ReadonlyMap<string, number>;
+  plantWind?: boolean;
+  plantBrush?: PlantBrushOptions;
   onCopyPlaced: (result: CopyResult) => void; onCopyStatus: (message:string) => void;
   isolatedLayerId?: string | null;
   project: Project; selectedId: string | null; onSelect: (id: string | null,additive?:boolean) => void;
@@ -53,14 +67,15 @@ type Props = {
   outlineEditing?: OutlineEditProps;
   openingEditing?: Omit<OpeningEditProps, 'walls'|'editor'|'snapping'|'topView'>;
   grid: boolean; playing: boolean; quality: 'low' | 'high';
-  view: CameraView; onNavigationView: (view: CameraView) => void; frameToken: number; frameCancelToken: number;
+  view: CameraView; projection:CameraProjection;onNavigationView: (view: CameraView) => void; frameToken: number; frameCancelToken: number;
   onMetrics: (metrics: ViewportMetrics) => void;
-  editor: Editor; tool: 'select' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
+  editor: Editor; tool: 'select' | 'plant' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
   onStrokeTime: (milliseconds: number) => void;
   onGroundPoint: (x: number, z: number) => void; onError: (message: string) => void;
   transformMode: TransformMode; snapping: boolean;
   architectureDrawing?: {level: import('@openlandcraft/core').Level; kind: 'wall'|'floor'|'roof'; offset: number; thickness: number};
-  wallDraft:PathPoint[];regionDraft:PathPoint[]; riverDraft: RiverPoint[]; pathDraft: PathPoint[]; lakeDraft:PathPoint[];lakeDraftLevel:number;
+  wallDraft:PathPoint[];regionDraft:PathPoint[]; riverDraft: RiverPoint[]; pathDraft: PathPoint[]; pathDraftWidth?:number; lakeDraft:PathPoint[];lakeDraftLevel:number;
+  routeCornerControls?:ReactNode;draftCornerControls?:ReactNode;pathDraftRounding?:number[];draftRouteAnchor?:number|null;onDraftRouteAnchor?:(index:number)=>void;selectedRouteAnchor?:number|null;onRouteAnchor?:(index:number)=>void;
   waterPreview: { reset: number; step: number; riverReset:number; riverStep:number; lakeReset:number; lakeStep:number };
 };
 
@@ -72,7 +87,9 @@ class CanvasBoundary extends Component<{ children: ReactNode }, { error: boolean
   }
 }
 
-function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, onSelect }: Props) {
+function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, onSelect, plantAsset, snapping, plantBrush, onError }: Props) {
+  const painting = tool === 'plant' && !!plantBrush;
+  const paint = usePlantBrush({ enabled: painting, asset: plantAsset, options: plantBrush, editor, project, onError });
   const mesh = useRef<THREE.Mesh>(null);
   const previous = useRef<{ geometry: THREE.BufferGeometry; heights: number[]; authored:number[] } | null>(null);
   const authoredHeights=(editor.getSnapshot().preview??editor.getSnapshot().project).site.terrain.heights;
@@ -82,6 +99,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
   const pendingInputTime = useRef<number | null>(null);
   const previewReady = useRef(false);
   const { gl } = useThree();
+  const drawingClick=useDrawingClick(gl.domElement,tool==='path');
   const geometry = useMemo(() => {
     const { width, depth } = project.site;
     const geometry = new THREE.PlaneGeometry(width, depth, project.site.terrain.columns - 1, project.site.terrain.rows - 1);
@@ -148,7 +166,9 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
     editor.preview({ type: 'terrain', field: stroke.current.stroke.snapshot() });
   };
   const move = (event: ThreeEvent<PointerEvent>) => {
+    if (painting) { paint.move(event); return; }
     if(tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')&&!editor.getSnapshot().gestureLabel){event.stopPropagation();return;}
+    if (tool === 'plant') { event.stopPropagation(); setCursor([snapping ? Math.round(event.point.x * 2) / 2 : event.point.x, snapping ? Math.round(event.point.z * 2) / 2 : event.point.z]); return; }
     if (tool !== 'terrain') return;
     event.stopPropagation();
     if (stroke.current && event.pointerId !== stroke.current.pointerId) return;
@@ -162,6 +182,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
     if (scheduled.current === null) scheduled.current = requestAnimationFrame(publish);
   };
   const down = (event: ThreeEvent<PointerEvent>) => {
+    if (painting) { paint.down(event); return; }
     if((tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')&&!editor.getSnapshot().gestureLabel){event.stopPropagation();return;}
     if (tool !== 'terrain' || event.button !== 0 || stroke.current) return;
     event.stopPropagation();
@@ -179,6 +200,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
     publish();
   };
   const up = (event: ThreeEvent<PointerEvent>) => {
+    if (painting) { paint.up(event); return; }
     if (!stroke.current || stroke.current.pointerId !== event.pointerId) return;
     event.stopPropagation();
     move(event);
@@ -198,10 +220,12 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
   }, [cursor, brush.radius, tool, project.site.terrain]);
   useEffect(() => () => ring?.dispose(), [ring]);
   return <group>
-    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onLostPointerCapture={cancel} onPointerOut={() => { if (!stroke.current) setCursor(null); }} onClick={(event) => { if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if ((tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.delta <= 4) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
+    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={painting ? paint.cancel : cancel} onLostPointerCapture={painting ? paint.cancel : cancel} onPointerOut={() => { paint.out(); if (!stroke.current) setCursor(null); }} onClick={(event) => { if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if (((tool === 'plant' && !painting) || tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.button === 0 && event.delta <= 4 && drawingClick(event.button)) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
       <CoastalTerrainMaterial site={project.site} />
     </mesh>
     {ring && <lineLoop geometry={ring} raycast={() => undefined} renderOrder={10} userData={{waterCaptureExclude:true}}><lineBasicMaterial color={brush.kind === 'lower' ? '#e7b0a1' : '#e4ffb2'} depthTest={false} /></lineLoop>}
+    {paint.ring}
+    {tool === 'plant' && !painting && plantAsset && <LibraryPlacementPreview key={plantAsset.id} asset={plantAsset} cursor={cursor} project={project} />}
     <TerrainClosure site={project.site}/>
   </group>;
 }
@@ -223,13 +247,25 @@ function Massing({ entity, selected, onSelect, blockOpeningEdit=false }: { block
   </group>;
 }
 
-function CameraRig({ project, selectedId, view, onNavigationView, frameToken, frameCancelToken, tool, openingEditing, openingSelection, navigation }: Props & { navigation: React.RefObject<NavigationBridge> }) {
-  const { camera, controls, size, gl } = useThree();
-  type Orbit = { target: THREE.Vector3; update: () => void; enableDamping: boolean };
+function CameraRig({ project, selectedId, view, projection, onNavigationView, frameToken, frameCancelToken, tool, openingEditing, openingSelection, navigation, plantBrush }: Props & { navigation: React.RefObject<NavigationBridge> }) {
+  const { camera, controls, size, gl, scene,set } = useThree();
+  type Orbit = { object:THREE.Camera;target: THREE.Vector3; update: () => void; enableDamping: boolean };
   const flight = useRef<{ sample: ReturnType<typeof cameraFlight>; elapsed: number; duration: number; orbit: Orbit; damping: boolean } | null>(null);
   const initialized = useRef(false);
   const navigationView = useRef<{ view: CameraView; frameToken: number } | null>(null);
+  const previousView=useRef(view);
+  const projectionSwap=useRef<{camera:THREE.Camera;target:THREE.Vector3;reframe:boolean}|null>(null);
   const stopFlight = () => { const active = flight.current; flight.current = null; if (active) active.orbit.enableDamping = active.damping; };
+  useLayoutEffect(()=>{
+    const orbit=controls as unknown as Orbit|null;
+    if(!orbit||orbit.object!==camera||(projection==='orthographic')===(camera instanceof THREE.OrthographicCamera))return;
+    stopFlight();const target=orbit.target.clone(),next=projectionCamera(camera,projection,target,size.width/size.height);
+    next.position.copy(orientationPosition(projection==='orthographic'?'axonometric':'perspective',target,next.position.distanceTo(target)));
+    next.lookAt(target);next.updateMatrixWorld();projectionSwap.current={camera:next,target,reframe:!preserveProjectionFraming(previousView.current,view)};set({camera:next});
+  },[projection,camera,controls,set]);
+  useLayoutEffect(()=>{
+    if(camera instanceof THREE.OrthographicCamera){const zoom=camera.zoom;fitOrthographicCamera(camera,camera.top-camera.bottom,size.width/size.height);camera.zoom=zoom;camera.updateProjectionMatrix();}
+  },[camera,size.width,size.height]);
   useLayoutEffect(() => { stopFlight(); }, [frameCancelToken]);
   useLayoutEffect(() => {
     const orbit = controls as unknown as Orbit | null;
@@ -244,7 +280,8 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
       return damping;
     };
     navigation.current.stop = stopFlight;
-    navigation.current.snap = next => {
+    navigation.current.snap = requested => {
+      const next=requested==='perspective'&&projection==='orthographic'?'axonometric':requested;
       const damping = drain();
       const destination = orientationPosition(next, orbit.target, camera.position.distanceTo(orbit.target));
       changeView(next);
@@ -256,10 +293,10 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
       const damping = drain();
       camera.position.copy(orbitPosition(camera.position, orbit.target, dx, dy));
       camera.lookAt(orbit.target); orbit.update(); orbit.enableDamping = damping;
-      changeView('perspective');
+      changeView(projection==='orthographic'?'axonometric':'perspective');
     };
     return () => { delete navigation.current.snap; delete navigation.current.rotate; delete navigation.current.stop; };
-  }, [camera, controls, view, frameToken, onNavigationView, navigation]);
+  }, [camera, controls, view, projection, frameToken, onNavigationView, navigation]);
   useFrame(() => { navigation.current.sync?.(camera.quaternion); });
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') stopFlight(); };
@@ -285,7 +322,15 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
   }, -0.4);
   useEffect(() => {
     const orbit = controls as unknown as Orbit | null;
-    if (!orbit) return;
+    if (!orbit||orbit.object!==camera) return;
+    if(projectionSwap.current){
+      if(projectionSwap.current.camera!==camera)return;
+      const reframe=projectionSwap.current.reframe;
+      stopFlight();orbit.target.copy(projectionSwap.current.target);camera.lookAt(orbit.target);orbit.update();
+      projectionSwap.current=null;navigationView.current=null;
+      if(!reframe&&(view==='perspective'||view==='axonometric')){previousView.current=view;return;}
+    }
+    previousView.current=view;
     const navigated = navigationView.current;
     navigationView.current = null;
     if (navigated?.view === view && navigated.frameToken === frameToken) return;
@@ -300,9 +345,30 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
       } else if (selected?.kind === 'block') {
         target = new THREE.Vector3(...selected.position).add(new THREE.Vector3(0, selected.size[1] / 2, 0));
         distance = Math.max(...selected.size) * 2.8 * aspectFit;
-      } else if (selected?.kind === 'instance' || selected?.kind === 'level') {
+      } else if (selected?.kind === 'instance' && selected.walkingRoute) {
+        const bounds=new THREE.Box3().setFromPoints(selected.walkingRoute.points.map(([x,z])=>new THREE.Vector3(x,groundHeight(x,z,project.site),z)));
+        target=bounds.getCenter(new THREE.Vector3());distance=Math.max(18,bounds.getSize(new THREE.Vector3()).length()*1.5+selected.walkingRoute.width)*aspectFit;
+      } else if ((selected?.kind === 'instance' && tool !== 'path') || selected?.kind === 'level') {
         target = new THREE.Vector3(...(selected.kind === 'instance' ? instancePosition(selected, project) : selected.position));
         distance = (selected.kind === 'instance' ? 18 * Math.max(...selected.scale) : 30) * aspectFit;
+        if (selected.kind === 'instance' && project.assets.some(asset => asset.id === selected.assetId && (isBirdAsset(asset) || isFishAsset(asset) || isGroundCharacterAsset(asset)))) {
+          scene.traverse(object => {
+            if (object.userData.copyEntityId === selected.id && (object.parent?.userData.birdFlight || object.parent?.userData.fishSwim || object.parent?.userData.groundCharacter)) target = object.getWorldPosition(new THREE.Vector3());
+          });
+          distance = 5 * Math.max(...selected.scale) * aspectFit;
+          const schools=fishSchools(project), member=schools.get(selected.id);
+          if (member && member.school.count > 1) {
+            const bounds=new THREE.Box3();
+            scene.traverse(object => {
+              if (object.parent?.userData.fishSwim && schools.get(object.userData.copyEntityId)?.school === member.school)
+                bounds.expandByPoint(object.getWorldPosition(new THREE.Vector3()));
+            });
+            if (!bounds.isEmpty()) {
+              target=bounds.getCenter(new THREE.Vector3());
+              distance=Math.max(distance,bounds.getSize(new THREE.Vector3()).length()*1.8*aspectFit);
+            }
+          }
+        }
       } else if ((selected?.kind === 'path'||selected?.kind === 'lake'||selected?.kind === 'materialRegion'||selected?.kind === 'plantingRegion')) {
         const bounds = new THREE.Box3().setFromPoints(selected.points.map(([x,z]) => new THREE.Vector3(x,groundHeight(x,z,project.site),z)));
         target = bounds.getCenter(new THREE.Vector3()); distance = Math.max(16, bounds.getSize(new THREE.Vector3()).length()*1.4)*aspectFit;
@@ -345,6 +411,7 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
       const pose=shoreCamera(project.site,ocean); target.set(...pose.target); destination.set(...pose.position);
     } else destination.copy(orientationPosition(view === 'shore' || view.endsWith('underwater') ? 'perspective' : view as OrientationView, target, view === 'perspective' ? distance * Math.hypot(0.73, 0.67, 0.95) : distance));
     stopFlight();
+    if(camera instanceof THREE.OrthographicCamera)fitOrthographicCamera(camera,2*destination.distanceTo(target)*Math.tan(42*Math.PI/360),size.width/size.height);
     if (initialized.current && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const damping = orbit.enableDamping;
       // Drain residual orbit motion before taking the departure pose.
@@ -355,10 +422,10 @@ function CameraRig({ project, selectedId, view, onNavigationView, frameToken, fr
     // Frame only on an explicit camera action; property changes preserve the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, controls, view, frameToken, project.site.width, project.site.depth]);
-  const drawing = tool === 'wall' || tool === 'floor' || tool === 'roof';
-  return <OrbitControls enabled={drawing || tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} maxPolarAngle={Math.PI} enableRotate={view !== 'top'} onStart={() => {
-    if (['front', 'back', 'left', 'right', 'bottom'].includes(view)) { navigationView.current = { view: 'perspective', frameToken }; onNavigationView('perspective'); }
-  }} mouseButtons={{ LEFT: drawing ? undefined : view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
+  const drawing = tool === 'wall' || tool === 'floor' || tool === 'roof' || (tool === 'plant' && !!plantBrush),routeDrawing=tool==='path';
+  return <OrbitControls enabled={routeDrawing || drawing || tool === 'plant' || tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} minZoom={.05} maxZoom={200} maxPolarAngle={Math.PI} enableRotate={!routeDrawing && view !== 'top'} onStart={() => {
+    if (['front', 'back', 'left', 'right', 'bottom'].includes(view)) { const next=projection==='orthographic'?'axonometric':'perspective';navigationView.current = { view: next, frameToken }; onNavigationView(next); }
+  }} touches={{ ONE: drawing ? undefined : routeDrawing ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }} mouseButtons={{ LEFT: drawing ? undefined : routeDrawing || view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
 }
 
 function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
@@ -373,7 +440,9 @@ function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
   useFrame((_, delta) => {
     sample.current.elapsed += delta; sample.current.frames++;
     if (sample.current.elapsed >= 1.5) {
-      onMetrics({ fps: Math.round(sample.current.frames / sample.current.elapsed), calls: gl.info.render.calls, triangles: gl.info.render.triangles, renderer });
+      onMetrics({ fps: Math.round(sample.current.frames / sample.current.elapsed), calls: gl.info.render.calls, triangles: gl.info.render.triangles, renderer,
+        resources:{geometries:gl.info.memory.geometries,textures:gl.info.memory.textures,programs:gl.info.programs?.length??0},
+        buffer:{width:gl.domElement.width,height:gl.domElement.height,dpr:gl.getPixelRatio()}});
       sample.current = { elapsed: 0, frames: 0 };
     }
     gl.info.reset();
@@ -384,6 +453,8 @@ function Metrics({ onMetrics }: { onMetrics: Props['onMetrics'] }) {
 export function Viewport(authored: Props) {
   const navigation = useRef<NavigationBridge>({});
   const project = useMemo(() => layerDisplayProject(evaluateProject(authored.project), authored.isolatedLayerId), [authored.project, authored.isolatedLayerId]);
+  const movementSource=[ROUND_ROUTE_GESTURE,ROUND_PATH_GESTURE].includes(authored.editor.getSnapshot().gestureLabel??'') ? authored.editor.getSnapshot().project : authored.project;
+  const movementProject=useMemo(()=>layerDisplayProject(evaluateProject(movementSource),authored.isolatedLayerId),[movementSource,authored.isolatedLayerId]);
   const editable = (id:string) => canEditObject(authored.project,id,authored.isolatedLayerId);
   const props = { ...authored, project, onSelect:(id:string|null,additive=false)=>{if(!id||editable(id))authored.onSelect(id,additive);},
     onWallPick:(id:string,doubleClick:boolean)=>{if(editable(id))authored.onWallPick?.(id,doubleClick);},
@@ -393,6 +464,8 @@ export function Viewport(authored: Props) {
   const coastSite = transientCoast ? evaluateProject(props.editor.getSnapshot().project).site : project.site;
   const [hovering, setHovering] = useState(false);
   const selected = props.project.entities.find((entity) => entity.id === props.selectedId);
+  const selectedRoute = useMemo(()=>selected?.kind==='instance' ? characterWalkingPath(selected) : undefined,[selected]);
+  const draftCurve=useMemo(()=>roundedRoutePoints({points:props.pathDraft,width:props.pathDraftWidth??3,cornerRounding:props.pathDraftRounding}),[props.pathDraft,props.pathDraftWidth,props.pathDraftRounding]);
   const pick = (id: string,additive=false) => { if(!editable(id))return; if (props.tool === 'select'||(props.tool==='wall-edit'||props.tool==='outline-edit')||props.tool==='opening-edit') props.onSelect(additive?id:unitForPart(project,id)?.id??id,additive); };
   const committedIds = new Set(props.editor.getSnapshot().project.entities.map(entity => entity.id));
   const copyPreviewIds = new Set(props.editor.getSnapshot().gestureLabel === 'Alt-drag copy' ? project.entities.filter(entity => !committedIds.has(entity.id)).map(entity => entity.id) : []);
@@ -421,15 +494,18 @@ export function Viewport(authored: Props) {
           {props.view === 'shore' && project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={`${entity.id}-horizon`} ocean={entity} site={project.site} selected={false} quality={props.quality} horizon />)}
           {props.project.entities.filter((entity) => entity.kind === 'river' && entity.visible).map((river) => river.kind === 'river' && <group key={river.id} userData={{copyEntityId:river.id}}><RiverLayer river={river} project={props.project} editor={props.editor} selected={river.id === props.selectedId&&!props.view.endsWith('underwater')} playing={props.playing} quality={props.quality} enabled={props.tool === 'select'&&editable(river.id)} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError} /></group>)}
           {props.tool === 'river' && <RiverDraft points={props.riverDraft} />}
-          {project.entities.map(entity => entity.kind === 'path' && entity.visible && <group key={entity.id} userData={{copyEntityId:entity.id}}><PathLayer path={entity} project={project} selected={entity.id === props.selectedId} enabled={props.tool === 'select'&&editable(entity.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} /></group>)}
-          {props.tool === 'path' && <PathDraft points={props.pathDraft} site={project.site} />}
+          {project.entities.map(entity => entity.kind === 'path' && entity.visible && <group key={entity.id} userData={{copyEntityId:entity.id}}><PathLayer path={entity} project={project} selected={entity.id === props.selectedId} enabled={props.tool === 'select'&&editable(entity.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={entity.id===props.selectedId?props.routeCornerControls:undefined}/></group>)}
+          {selected?.kind==='instance' && selected.visible && selectedRoute && props.tool==='select' && <PathLayer key={selected.id} owner={selected} path={selectedRoute} project={project} selected enabled={editable(selected.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={props.routeCornerControls}/>}
+          {props.tool === 'path' && <PathDraft points={props.pathDraft} curvePoints={draftCurve} width={props.pathDraftWidth} site={project.site} selectedAnchor={props.draftRouteAnchor} onAnchorSelect={props.onDraftRouteAnchor} cornerControls={props.draftCornerControls}/>}
           {project.entities.map(entity=>entity.kind==='lake'&&entity.visible&&<group key={entity.id} userData={{copyEntityId:entity.id}}><LakeLayer lake={entity} project={project} editor={props.editor} selected={entity.id===props.selectedId&&!props.view.endsWith('underwater')} enabled={props.tool==='select'&&editable(entity.id)} snapping={props.snapping} quality={props.quality} onSelect={props.onSelect} onError={props.onError}/></group>)}
           {props.tool==='lake'&&<LakeDraft points={props.lakeDraft} level={props.lakeDraftLevel}/>}
           <group onPointerOver={() => setHovering(true)} onPointerOut={() => setHovering(false)}>
             {props.project.entities.filter((entity): entity is Block => entity.kind === 'block' && entity.visible).map((entity) => <Massing key={entity.id} blockOpeningEdit={(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} entity={entity} selected={selectedParts.includes(entity.id)||entity.id === props.selectedId} onSelect={(id) => { if (props.tool === 'select') props.onSelect(id); }} />)}
             {props.architectureDrawing&&<ArchitectureDrawing project={props.project} key={props.architectureDrawing.level.id} {...props.architectureDrawing} points={props.wallDraft} onPoint={props.onGroundPoint} snapping={props.snapping} walls={props.project.entities.filter((e): e is import('@openlandcraft/core').Wall=>e.kind==='wall'&&e.parentId===props.architectureDrawing?.level.id&&e.joins===true)}/>}
             {props.project.entities.filter((entity) => entity.kind === 'level' && entity.visible && !hiddenBuildings.includes(entity.buildingId??'') && (!props.isolateLevelId||entity.id===props.isolateLevelId||copyPreviewIds.has(entity.id))).map((level) => level.kind === 'level' && <BuildingLevel key={level.id} level={level} parts={props.project.entities.filter((entity): entity is BuildingPart => entity.parentId === level.id && entity.visible && !hiddenMembers.has(entity.id) && (copyPreviewIds.has(entity.id)||(!(((props.architectureDrawing&&props.architectureDrawing.kind!=='roof')||props.openingPlacement||props.openingEditing||props.wallEditing)&&entity.kind==='roof') && !(props.outlineEditing && ((props.outlineEditing.part.kind==='slab'&&(entity.kind==='wall'||entity.kind==='roof'))||(entity.kind==='roof'&&entity.id!==props.outlineEditing.part.id))))) && (entity.kind === 'wall' || entity.kind === 'slab' || entity.kind === 'roof'))} selectedId={props.openingSelection?.focus?null:props.selectedId} selectedIds={selectedParts} onSelect={pick} onWallPick={props.onWallPick} onOutlinePick={props.onOutlinePick} editingPartId={props.wallEditing?.wall.id??props.outlineEditing?.part.id} interactive={props.tool==='select'||(props.tool==='wall-edit'||props.tool==='outline-edit')||props.tool==='opening-edit'} placingOpening={!!props.openingPlacement} editingOpening={(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} />)}
-            {props.project.assets.filter((asset) => props.project.entities.some((entity) => entity.kind === 'instance' && entity.assetId === asset.id && entity.visible)).map((asset) => <ModelInstances key={asset.id} asset={asset} project={props.project} instances={props.project.entities.filter((entity): entity is Instance => entity.kind === 'instance' && entity.assetId === asset.id && entity.visible)} selectedId={props.selectedId} selectedIds={selectedParts} onSelect={pick} onError={props.onError} interactive={props.tool === 'select'||!!props.openingPlacement||(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} />)}
+            <GroundCharacterProvider project={movementProject} playing={props.playing ?? true}><FishSchoolProvider project={props.project} playing={props.playing ?? true}>
+            {props.project.assets.filter((asset) => props.project.entities.some((entity) => entity.kind === 'instance' && entity.assetId === asset.id && entity.visible)).map((asset) => <ModelInstances key={asset.id} windEnabled={props.plantWind} playing={props.playing} asset={asset} growth={props.plantGrowth} project={props.project} instances={props.project.entities.filter((entity): entity is Instance => entity.kind === 'instance' && entity.assetId === asset.id && entity.visible)} selectedId={props.selectedId} selectedIds={selectedParts} onSelect={pick} onError={props.onError} interactive={props.tool === 'select'||!!props.openingPlacement||(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} />)}
+            </FishSchoolProvider></GroundCharacterProvider>
           </group>
           {(props.tool==='select'||(props.tool==='wall-edit'||props.tool==='outline-edit'))&&props.openingSelection&&project.entities.filter(e=>e.kind==='level'&&e.visible&&!hiddenBuildings.includes(e.buildingId??'')&&(!props.isolateLevelId||e.id===props.isolateLevelId)).map(level=>level.kind==='level'&&<OpeningSelection key={level.id} level={level} {...props.openingSelection!} topView={props.view==='top'} walls={project.entities.filter((e):e is Extract<typeof e,{kind:'wall'}>=>e.kind==='wall'&&editable(e.id)&&e.parentId===level.id&&e.visible&&!hiddenMembers.has(e.id))}/>)}
           {props.outlineEditing&&<OutlineEdit key={props.outlineEditing.part.id} {...props.outlineEditing} editor={props.editor} snapping={props.snapping} topView={props.view==='top'}/>}

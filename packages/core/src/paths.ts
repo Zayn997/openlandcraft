@@ -1,12 +1,24 @@
 import {footprint} from './architecture';
-import type { PathPoint } from '@openlandcraft/landscape';
-import type { Level, Path, Project } from './model';
+import { walkingRouteIssue, type PathPoint } from '@openlandcraft/landscape';
+import { pathSchema, type Level, type Path, type Project } from './model';
 import { snap } from './placement';
+export const ROUND_PATH_GESTURE='Round path corner';
 
 export function createPath(project: Project, points?: PathPoint[]): Path {
   return { id: crypto.randomUUID(), parentId: 'site', kind: 'path', name: 'Landscape path', visible: true,
     points: points ?? [[-project.site.width * 0.25, project.site.depth * 0.28], [-project.site.width * 0.12, project.site.depth * 0.28], [0, project.site.depth * 0.36]],
     width: 2, surface: 'gravel', elevationMode: 'terrain' };
+}
+
+/** Only the points drawn by the user enter the document; redraw preserves route identity. */
+export function createDrawnPath(project: Project, points: PathPoint[], settings: Pick<Path,'width'|'surface'|'cornerRounding'>, replaceId?: string): Path {
+  if (points.length < 2) throw new Error('Click at least a start and an end point before finishing the path.');
+  const original = replaceId ? project.entities.find(e => e.id === replaceId) : undefined;
+  if (replaceId && original?.kind !== 'path') throw new Error('The path no longer exists. Start a new drawing.');
+  if (project.entities.some(e => e.kind === 'path' && e.id !== replaceId)) throw new Error('Redraw the existing path to change its route.');
+  const path = pathSchema.parse({...(original?.kind === 'path' ? original : createPath(project,points)),...settings,cornerRounding:settings.cornerRounding,points:points.map(p => [...p])});
+  const issue = walkingRouteIssue(path,project.site); if (issue) throw new Error(issue);
+  return path;
 }
 
 /** Placement snapping only: no hidden attachment to future building edits. */

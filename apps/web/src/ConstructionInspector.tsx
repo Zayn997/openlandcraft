@@ -1,15 +1,21 @@
 import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, PanelBody, PanelHeading, Row, SelectInput, SelectOption, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
+import { CharacterAnimationSection } from './CharacterAnimationSection';
+import { CharacterRouteSection } from './CharacterRouteSection';
+import { ROUND_ROUTE_GESTURE } from '@openlandcraft/core';
 import {OpeningFields, OutlineFields} from './ArchitectureFields';
 import {wallLength,floorHeight} from '@openlandcraft/core';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Check, Copy, Layers, RotateCcw, Trash2 } from 'lucide-react';
-import { instancePosition, scatterInstances, type Entity, type Editor, type Project, type Instance } from '@openlandcraft/core';
+import { instancePosition, isBirdAsset, isFishAsset, isGroundCharacterAsset, groundRoutes, groundCharacterKind, fishSchools, evaluateProject, layerDisplayProject, scatterInstances, type Entity, type Editor, type Project, type Instance } from '@openlandcraft/core';
 
 type Construction = Exclude<Entity, { kind: 'block' | 'ocean' | 'river' | 'path' | 'lake' }>;
-export function ConstructionInspector({ selected, project, editor, preview, cancel, onSelect, guard }: {
+export function ConstructionInspector({ selected, project, editor, preview, cancel, onSelect, guard, onDrawPath, onFrameRoute, onSelectRouteCorner }: {
   selected: Construction; project: Project; editor: Editor; preview: (entity: Entity) => boolean;
   cancel: () => void; onSelect: (id: string) => void; guard: (run: () => void) => void;
+  onDrawPath: (characterId: string) => void;
+  onFrameRoute:()=>void;
+  onSelectRouteCorner:(index:number|null)=>void;
 }) {
   const [count, setCount] = useState(12), [radius, setRadius] = useState(8), [seed, setSeed] = useState(42);
   const state = editor.getSnapshot();
@@ -18,18 +24,32 @@ export function ConstructionInspector({ selected, project, editor, preview, canc
   const numeric = (key: string, label: string, value: number, min: number, max: number, unit = 'm') => <NumberField key={key} label={label} value={value} min={min} max={max} unit={unit} onChange={(next) => change({ [key]: next })} />;
   const point = (key: 'position' | 'scale' | 'start' | 'end' | 'center', value: number[], labels: string[], min: number, max: number) => <FieldGrid columns={'auto'}>{value.map((number, index) => <NumberField key={`${key}-${index}`} label={labels[index]} value={number} min={key === 'position' && index === 1 ? -50 : min} max={key === 'position' && index === 1 ? 100 : max} unit={key === 'scale' ? '×' : 'm'} onChange={(next) => { const point = [...value]; point[index] = next; change({ [key]: point }); }} />)}</FieldGrid>;
   const asset = selected.kind === 'instance' ? project.assets.find((asset) => asset.id === selected.assetId) : undefined;
+  const bird = asset ? isBirdAsset(asset) : false;
+  const fish = asset ? isFishAsset(asset) : false;
+  const character = asset ? isGroundCharacterAsset(asset) : false;
+  const navigationProject=state.gestureLabel===ROUND_ROUTE_GESTURE ? state.project : project;
+  const groundRoute = useMemo(() => character && selected.kind === 'instance' ? groundRoutes(layerDisplayProject(evaluateProject(navigationProject),state.isolatedLayerId)).get(selected.id) : null,[character,selected.id,navigationProject,state.isolatedLayerId]);
+  const fishRoute = useMemo(() => {
+    if (!fish || selected.kind !== 'instance') return null;
+    const displayed = layerDisplayProject(evaluateProject(project),state.isolatedLayerId);
+    return fishSchools(displayed).get(selected.id);
+  },[fish,selected,project,state.isolatedLayerId]);
   return <PanelBody className="construction-inspector">
     <form onSubmit={(event) => { event.preventDefault(); if(!rejected.length)guard(() => editor.commit()); }}>
-      <fieldset className="architecture-properties"><PanelHeading title={<>{selected.name}</>} icon={<>{selected.kind === 'instance' ? <Box size={23} /> : <Layers size={23} />}</>} subtitle={<>{selected.kind === 'instance' ? 'Imported model' : selected.kind === 'level' ? 'Fixed building level' : `Parametric ${selected.kind}`}</>} />
+      <fieldset className="architecture-properties"><PanelHeading title={<>{selected.name}</>} icon={<>{selected.kind === 'instance' ? <Box size={23} /> : <Layers size={23} />}</>} subtitle={<>{selected.kind === 'instance' ? (fish ? 'Swimming fish' : bird ? 'Flying bird' : character ? groundCharacterKind(asset!) === 'horse' ? 'Animated horse' : 'Animated person' : 'Placed model') : selected.kind === 'level' ? 'Fixed building level' : `Parametric ${selected.kind}`}</>} />
       <InspectorSection sectionId="constructioninspector-object" title={<>Object</>}><Field>Name<TextInput aria-label="Object name" required value={selected.name} maxLength={80} onChange={(event) => { if (event.target.value.trim()) change({ name: event.target.value }); }} /></Field>
         {selected.parentId !== 'site' && <button type="button" className="parent-link" onClick={() => onSelect(selected.parentId)}>↑ {project.entities.find((entity) => entity.id === selected.parentId)?.name}</button>}</InspectorSection>
-      {(selected.kind === 'instance' || selected.kind === 'level') && <InspectorSection sectionId="constructioninspector-placement" title={<>Placement</>}>
+      {character && selected.kind === 'instance' && <CharacterAnimationSection entity={selected} route={groundRoute} onChange={change}/>}
+      {character && selected.kind === 'instance' && groundCharacterKind(asset!)==='person' && <CharacterRouteSection entity={selected} pending={!!state.gestureLabel} onChange={change} onDraw={()=>onDrawPath(selected.id)} onFrame={onFrameRoute} onSelectCorner={onSelectRouteCorner}/>}
+      {(selected.kind === 'instance' || selected.kind === 'level') && <InspectorSection sectionId="constructioninspector-placement" title={fish ? 'Swim center' : bird ? 'Flight center' : character && groundCharacterKind(asset!) === 'person' ? 'Path start' : character ? 'Movement area' : 'Placement'}>
+        {fish && <FieldMessage>{fishRoute ? (fishRoute.school.count > 1 ? `Swimming in a school of ${fishRoute.school.count}. Nearby fish turn together with space between them.` : 'Swimming alone. Place fish nearby to form a small school.') : 'No room for safe spacing here. Move the swim center into open water or reduce the scale; the fish stays hidden until there is room.'}</FieldMessage>}
+        {bird && <FieldMessage>Move the flight center. Elevation raises the route above obstacles; phase offsets the orbit.</FieldMessage>}
         {selected.kind === 'instance' && <Field>Elevation mode<SelectInput aria-label="Elevation mode" value={selected.anchor} onValueChange={(value) => { const anchor = value as Instance['anchor']; const world = instancePosition(selected, project); change({ anchor, position: [world[0], anchor === 'fixed' ? world[1] : world[1] - (instancePosition({ ...selected, anchor: 'terrain', position: [world[0], 0, world[2]] }, project)[1]), world[2]] }); }}><SelectOption value="terrain">Follow terrain</SelectOption><SelectOption value="fixed">Fixed elevation</SelectOption></SelectInput></Field>}
         {point('position', selected.position, ['X position', selected.kind === 'instance' && selected.anchor === 'terrain' ? 'Ground offset' : 'Elevation', 'Z position'], -500, 500)}
-        {numeric('rotation', 'Rotation', selected.rotation, -360, 360, '°')}
+        {!groundRoute?.path && numeric('rotation', fish ? 'Tail phase' : bird ? 'Flight phase' : groundRoute?.radius ? 'Route phase' : 'Rotation', selected.rotation, -360, 360, '°')}
         {selected.kind==='level'&&<>{numeric('storeyHeight','Floor-to-floor height',floorHeight(project,selected),0.5,30)}<FieldMessage>Spacing for the next copy. Existing floors keep their elevations.</FieldMessage></>}
         {selected.kind === 'instance' && point('scale', selected.scale, ['Scale X', 'Scale Y', 'Scale Z'], 0.05, 20)}
-        <FieldMessage>{selected.kind === 'level' ? 'All walls, slabs, and roofs use this level’s coordinates. Terrain edits keep its elevation fixed.' : 'Model origin is bottom-center. Terrain mode follows sculpting; ground offset stays constant.'}</FieldMessage>
+        {!bird && !fish && !character && <FieldMessage>{selected.kind === 'level' ? 'All walls, slabs, and roofs use this level’s coordinates. Terrain edits keep its elevation fixed.' : 'Model origin is bottom-center. Terrain mode follows sculpting; ground offset stays constant.'}</FieldMessage>}
       </InspectorSection>}
       {selected.kind === 'wall' && <InspectorSection sectionId="constructioninspector-wall-profile" title={<>Wall · level coordinates</>}><Field variant="checkbox"><CheckboxInput checked={!!selected.joins} onChange={event=>change({joins:event.target.checked})}/>Join wall chain</Field><FieldMessage>Joining connects corners and interior wall contacts and applies this wall's height and elevation to the chain. Thickness stays independent. Older projects retain independent walls until enabled.</FieldMessage>{point('start', selected.start, ['Start X', 'Start Z'], -100, 100)}{point('end', selected.end, ['End X', 'End Z'], -100, 100)}<NumberField label="Wall length" value={wallLength(selected)} min={0.2} max={200} onChange={next=>{const length=wallLength(selected);change({end:[selected.start[0]+(selected.end[0]-selected.start[0])*next/length,selected.start[1]+(selected.end[1]-selected.start[1])*next/length]});}}/><Row className="part-buttons"><button type="button" onClick={()=>change({end:[selected.start[0]+(Math.sign(selected.end[0]-selected.start[0])||Math.sign(selected.end[1]-selected.start[1])||1)*wallLength(selected),selected.start[1]]})}>Align X</button><button type="button" onClick={()=>change({end:[selected.start[0],selected.start[1]+(Math.sign(selected.end[1]-selected.start[1])||Math.sign(selected.end[0]-selected.start[0])||1)*wallLength(selected)]})}>Align Z</button></Row>{numeric('height', 'Wall height', selected.height, 0.2, 30)}{numeric('thickness', 'Wall thickness', selected.thickness, 0.05, 2)}{numeric('elevation', 'Base elevation', selected.elevation, -10, 30)}</InspectorSection>}
       {(selected.kind === 'slab' || selected.kind === 'roof') && <InspectorSection sectionId="constructioninspector-slab-roof-profile" title={<>{selected.kind === 'roof' ? selected.outline?'Flat roof':'Gable roof' : 'Floor slab'} · level coordinates</>}>{point('center', selected.center, ['Center X', 'Center Z'], -100, 100)}{!selected.outline&&<>{numeric('width', 'Width', selected.width, 0.5, 100)}{numeric('depth', 'Depth', selected.depth, 0.5, 100)}</>}{numeric('elevation', 'Base elevation', selected.elevation, -10, selected.kind === 'roof' ? 40 : 30)}{selected.kind === 'roof' ? numeric('rise', selected.outline?'Roof thickness':'Roof rise', selected.rise, 0.1, 15) : numeric('thickness', 'Slab thickness', selected.thickness, 0.05, 2)}</InspectorSection>}

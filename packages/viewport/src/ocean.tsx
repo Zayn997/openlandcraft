@@ -11,6 +11,7 @@ import { beachAppearanceGLSL } from './coast-appearance';
 import { waterMaterialGLSL } from './water-material';
 import { terrainUniforms, updateTerrainUniforms, appearanceUniforms, updateAppearanceUniforms } from './material-uniforms';
 import { oceanBoundary, oceanBoundaryVertex, oceanBoundaryFragment, underwaterVertex, underwaterFragment } from './ocean-volume';
+import {waterProjectionUniforms,waterDepthProjection} from './water-projection';
 
 const vertexShader = /* glsl */`
   ${oceanGroundGLSL}
@@ -58,7 +59,7 @@ const fragmentShader = /* glsl */`
     float time=uPhase/sqrt(9.81*uWaveNumber);
     vec2 micro=windSlope(q/uRippleScale,time,footprint/uRippleScale)*(0.5+uRoughness/0.6);
     vec3 normal = normalize(vec3(-slope.x-micro.x*detail*wind, 1.0, -slope.y-micro.y*detail*wind));
-    vec3 eye = normalize(cameraPosition - vWorld);
+    vec3 eye = waterEye(vWorld);
     vec3 color;
     if(gl_FrontFacing)color=waterRadiance(vWorld,normal,depth,uColor,uClarity,uRoughness);
     else{
@@ -138,7 +139,7 @@ export function OceanSurface({ ocean, site, selected, quality, horizon = false, 
   const boundary=useMemo(()=>oceanBoundary(site.width,site.depth,columns,rows),[site.width,site.depth,columns,rows]);
   useEffect(()=>()=>boundary.dispose(),[boundary]);
   const uniforms = useMemo(() => ({
-    ...terrainUniforms(),...appearanceUniforms(),...lakeUniforms(ground),
+    ...terrainUniforms(),...appearanceUniforms(),...lakeUniforms(ground),...waterProjectionUniforms(),
     uPhase: { value: 0 }, uAmplitude: { value: ocean.amplitude },
     uDirection: { value: new THREE.Vector2() }, uLevel: { value: ocean.level },
     uColor: { value: new THREE.Color(ocean.color) }, uSelected: { value: 0 },uFoam:{value:ocean.foam},
@@ -153,7 +154,8 @@ export function OceanSurface({ ocean, site, selected, quality, horizon = false, 
     if (!coast || !optics) return;
     for (const target of [material.current,groundMaterial.current,boundaryMaterial.current,underwaterMaterial.current]) {
     const live = target?.uniforms; if (!live) continue;
-    updateLakeUniforms(live as ReturnType<typeof lakeUniforms>,lake);updateTerrainUniforms(live as ReturnType<typeof terrainUniforms>,site.materials);updateAppearanceUniforms(live as ReturnType<typeof appearanceUniforms>,ocean.appearance);
+    waterDepthProjection(camera,live.uDepthProjection.value);
+    updateLakeUniforms(live as ReturnType<typeof lakeUniforms>,lake,ground);updateTerrainUniforms(live as ReturnType<typeof terrainUniforms>,site.materials);updateAppearanceUniforms(live as ReturnType<typeof appearanceUniforms>,ocean.appearance);
     live.uSceneColor.value = optics.target.texture; live.uSceneDepth.value = optics.target.depthTexture; live.uSky.value = optics.sky;
     gl.getDrawingBufferSize(live.uResolution.value); live.uNearFar.value.set(camera.near,camera.far);
     live.uCameraWorld.value.copy(camera.matrixWorld);live.uProjectionInverse.value.copy(camera.projectionMatrixInverse);

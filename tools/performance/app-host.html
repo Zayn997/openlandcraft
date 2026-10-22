@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>M8 actual app profile</title>
+<style>body{margin:0;background:#202820;color:#eef1e5;font:13px sans-serif}iframe{display:block;border:0;width:1440px;height:900px}pre{height:180px;overflow:auto;white-space:pre-wrap}button,input{margin:8px}</style></head><body>
+<iframe title="Actual editor" src="./app.html"></iframe>
+<label>Snapshot label <input id="label" value="initial"></label><button id="mark">Capture memory snapshot</button><button id="clear">Clear recording</button>
+<button data-fixture="mixed-100.olc.json">Open mixed 100</button><button data-fixture="mixed-500.olc.json">Open mixed 500</button><button data-fixture="small.olc.json">Open cleanup control</button>
+<button data-fixture="horse-walk.olc.json">Open horse walk</button>
+<button id="reference">Reference water CPU</button><button id="optimized">Optimized water CPU</button>
+<p id="summary" role="status">Waiting for editor</p><pre id="report" aria-label="App profile results"></pre>
+<script>
+const frame=document.querySelector('iframe'),out=document.querySelector('#report');
+window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.origin!==location.origin||event.data?.type!=='olc-m8-report')return;const r=event.data.report;out.textContent=JSON.stringify(r,null,2);document.querySelector('#summary').textContent=r.events.length+' events · '+r.commits.length+' commits · '+r.frames.length+' render windows';});
+const send=data=>frame.contentWindow.postMessage({type:'olc-m8-command',...data},location.origin);
+document.querySelector('#mark').onclick=()=>send({command:'mark',label:document.querySelector('#label').value});
+document.querySelector('#clear').onclick=()=>send({command:'clear'});
+document.querySelector('#reference').onclick=()=>send({command:'water-reference',enabled:true});
+document.querySelector('#optimized').onclick=()=>send({command:'water-reference',enabled:false});
+for(const button of document.querySelectorAll('[data-fixture]'))button.onclick=()=>send({command:'open',name:button.dataset.fixture});
+</script></body></html>

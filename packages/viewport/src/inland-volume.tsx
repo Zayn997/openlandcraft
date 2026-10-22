@@ -6,10 +6,11 @@ import {useWaterOptics} from './water-optics';
 import {oceanGroundGLSL} from './ocean-surface';
 import {waterMaterialGLSL} from './water-material';
 import {TERRAIN_BASE} from './terrain-closure';
+import {waterProjectionGLSL} from './water-projection';
 
 export const inlandUndersideGLSL=/* glsl */`
   vec3 inlandUnderside(vec3 world,vec3 normal,float depth,vec3 tint,float clarity){
-    vec3 eye=normalize(cameraPosition-world),ray=refract(-eye,-normal,1.333);
+    vec3 eye=waterEye(world),ray=refract(-eye,-normal,1.333);
     float fresnel=0.0204+0.9796*pow(1.0-max(0.0,dot(-normal,eye)),5.0);
     if(dot(ray,ray)<0.001)fresnel=1.0;
     vec3 reflected=reflect(-eye,-normal);
@@ -27,12 +28,13 @@ const fogFragment=/* glsl */`
   uniform mat4 uProjectionInverse;
   uniform vec3 uColor;
   uniform float uClarity,uSubmerged;
+  ${waterProjectionGLSL}
   void main(){
     vec2 uv=gl_FragCoord.xy/uResolution;
     float depth=min(texture2D(uExitDepth,uv).r,texture2D(uSceneDepth,uv).r);
-    float distance=-perspectiveDepthToViewZ(depth,uNearFar.x,uNearFar.y);
+    float distance=waterViewDepth(depth);
     vec4 p=uProjectionInverse*vec4(uv*2.0-1.0,1.0,1.0);
-    vec3 ray=normalize(p.xyz/p.w);
+    vec3 ray=isOrthographic ? vec3(0.0,0.0,-1.0) : normalize(p.xyz/p.w);
     float path=min(45.0,distance/max(0.001,-ray.z));
     vec3 scatter=mix(vec3(0.008,0.10,0.085),uColor*0.32,0.40);
     gl_FragColor=vec4(scatter,(1.0-exp(-path*0.12/max(0.1,uClarity)))*uSubmerged);
@@ -72,7 +74,7 @@ export function InlandVolume({geometry,vertex,discard,uniforms,revision,sample,l
       clipVolume();
       vec2 uv=gl_FragCoord.xy/uResolution;
       float nearDistance=-(viewMatrix*vec4(vWorld,1.0)).z;
-      float farDistance=-perspectiveDepthToViewZ(texture2D(uSceneDepth,uv).r,uNearFar.x,uNearFar.y);
+      float farDistance=waterViewDepth(texture2D(uSceneDepth,uv).r);
       float path=min(20.0,max(0.0,farDistance-nearDistance));
       vec3 transmission=exp(-vec3(0.65,0.18,0.12)*path/max(0.1,uClarity));
       vec3 scatter=mix(vec3(0.008,0.10,0.085),uColor*0.32,0.40);

@@ -32,10 +32,10 @@ export const oceanBoundaryFragment=/* glsl */`
     vec2 lakePoint=(vWorld.xz-uLakeBounds.xy)/uLakeBounds.zw;
     if(uLakeEnabled>0.5&&all(greaterThanEqual(lakePoint,vec2(0.0)))&&all(lessThanEqual(lakePoint,vec2(1.0)))&&lakeDistanceAt(vWorld.xz)>-0.8)discard;
     if(vWaterDepth<=0.005||vWorld.y<groundAt(vWorld.xz))discard;
-    vec3 direction=normalize(vWorld-cameraPosition);
+    vec3 direction=-waterEye(vWorld);
     vec2 uv=gl_FragCoord.xy/uResolution;
     float viewDepth=-(viewMatrix*vec4(vWorld,1.0)).z;
-    float captured=-perspectiveDepthToViewZ(texture2D(uSceneDepth,uv).r,uNearFar.x,uNearFar.y);
+    float captured=waterViewDepth(texture2D(uSceneDepth,uv).r);
     float through=max(0.0,(captured-viewDepth)/max(0.05,-(viewMatrix*vec4(direction,0.0)).z));
     vec2 exitDistance=(mix(-uSite*0.5,uSite*0.5,step(vec2(0.0),direction.xz))-vWorld.xz)/(sign(direction.xz)*max(abs(direction.xz),vec2(0.00001))+vec2(0.000001));
     through=min(through,max(0.0,min(exitDistance.x,exitDistance.y)));
@@ -71,8 +71,8 @@ export const underwaterFragment=/* glsl */`
     if(vSubmerged<0.001||uInlandUnderwater>0.5)discard;
     vec2 uv=gl_FragCoord.xy/uResolution;
     vec4 viewPoint=uProjectionInverse*vec4(uv*2.0-1.0,1.0,1.0);
-    vec3 ray=normalize((uCameraWorld*vec4(viewPoint.xyz/viewPoint.w,0.0)).xyz);
-    float captured=-perspectiveDepthToViewZ(texture2D(uSceneDepth,uv).r,uNearFar.x,uNearFar.y);
+    vec3 ray=isOrthographic ? normalize(-uCameraWorld[2].xyz) : normalize((uCameraWorld*vec4(viewPoint.xyz/viewPoint.w,0.0)).xyz);
+    float captured=waterViewDepth(texture2D(uSceneDepth,uv).r);
     float path=captured/max(0.001,-(viewMatrix*vec4(ray,0.0)).z);
     vec2 exitDistance=(mix(-uSite*0.5,uSite*0.5,step(vec2(0.0),ray.xz))-cameraPosition.xz)/(sign(ray.xz)*max(abs(ray.xz),vec2(0.00001))+vec2(0.000001));
     path=min(path,max(0.0,min(exitDistance.x,exitDistance.y)));

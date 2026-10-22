@@ -4,8 +4,20 @@ import { createSite, createPath, parseProject, evaluateProject, type River } fro
 import legacy from '../../../examples/river-water-study.olc.json';
 import { buildPathMesh, PATH_LIFT, updatePathHeights } from './path-geometry';
 import { intersectTerrain } from './terrain-picking';
+import {pathLength,roundedRoutePoints} from '@openlandcraft/landscape';
 
 describe('terrain-conforming paths', () => {
+  it('renders the fillet as real terrain-following surface without overlaps or the old sharp corner',()=>{
+    const project=createSite({name:'Fillet',width:40,depth:40,resolution:129,preset:'flat'}),path={...createPath(project,[[-15,0],[0,0],[0,15]]),cornerRounding:[0,1,0]};
+    const mesh=buildPathMesh(path,project.site),positions=mesh.geometry.getAttribute('position');let area=0;
+    const surface=new THREE.Mesh(mesh.geometry,new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));surface.updateMatrixWorld();
+    const pick=(x:number,z:number)=>new THREE.Raycaster(new THREE.Vector3(x,30,z),new THREE.Vector3(0,-1,0)).intersectObject(surface);
+    expect(pick(0,0)).toHaveLength(0);
+    for(const p of roundedRoutePoints(path))expect(pick(...p).length).toBeGreaterThan(0);
+    for(let i=0;i<positions.count;i+=3){const a=new THREE.Vector3().fromBufferAttribute(positions,i),b=new THREE.Vector3().fromBufferAttribute(positions,i+1),c=new THREE.Vector3().fromBufferAttribute(positions,i+2);area+=b.sub(a).cross(c.sub(a)).length()/2;}
+    expect(area).toBeCloseTo(path.width*pathLength(roundedRoutePoints(path)),4);
+    mesh.geometry.dispose();(surface.material as THREE.Material).dispose();
+  });
   it('matches rendered terrain triangles on rough ground, including inside path faces', () => {
     const project = createSite({ name: 'Rough', width: 20, depth: 20, resolution: 129, preset: 'flat' });
     project.site.terrain.heights = project.site.terrain.heights.map((_, i) => 2 + Math.sin(i * 0.8) * 0.7);

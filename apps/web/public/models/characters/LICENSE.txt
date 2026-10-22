@@ -1,0 +1,16 @@
+CC0 1.0 Universal — Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Horse: Farm Animals Pack by Quaternius
+https://opengameart.org/content/lowpoly-animated-farm-animal-pack
+Original archive: Farm Animals by @Quaternius.zip (2018)
+Original License.txt: CC0 1.0 Universal, credit not necessary.
+
+People: Ultimate Animated Character Pack by Quaternius
+https://opengameart.org/content/animated-characters-pack
+Original archive: ultimate_animated_character_pack_by_quaternius.zip
+Source page lists CC0; casual male and casual female models used.
+
+Materials, dimensions, and walk/idle exports prepared in Blender for OpenLandcraft.
+All modifications are also dedicated to the public domain under CC0 1.0.
+Attribution is optional. Creator and source records are retained in About / Credits.

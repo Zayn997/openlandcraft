@@ -10,25 +10,22 @@ type Asset = Project['assets'][number];
 type Props = {
   project: Project;
   busy: boolean;
-  importingModel: boolean;
   onAddBlock: () => void;
   onAddBuilding: () => void;
   onDrawBuilding: () => void;
   onDrawArchitecture: (kind: 'wall' | 'floor' | 'roof') => void;
   onRegions: () => void;
   onWater: () => void;
-  onAddPath: () => void;
   onDrawPath: () => void;
   onAddOcean: () => void;
-  onDemoTree: () => void;
   onPlaceAsset: (asset: Asset) => void;
   onRemoveAsset: (id: string) => void;
 };
 
 /** Editor commands remain in App; this component only presents the creation menu. */
 export function CreationMenu({
-  project, busy, importingModel, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
-  onRegions, onWater, onAddPath, onDrawPath, onAddOcean, onDemoTree, onPlaceAsset, onRemoveAsset,
+  project, busy, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
+  onRegions, onWater, onDrawPath, onAddOcean, onPlaceAsset, onRemoveAsset,
 }: Props) {
   const hasPath = project.entities.some(entity => entity.kind === 'path');
   const hasOcean = project.entities.some(entity => entity.kind === 'ocean');
@@ -51,14 +48,12 @@ export function CreationMenu({
         <DropdownMenuLabel>Landscape</DropdownMenuLabel>
         <DropdownMenuItem onSelect={onRegions}><Leaf />Landscape regions</DropdownMenuItem>
         <DropdownMenuItem onSelect={onWater}><Droplets />Water System</DropdownMenuItem>
-        <DropdownMenuItem disabled={hasPath} onSelect={onAddPath}><Route />Add path</DropdownMenuItem>
-        <DropdownMenuItem disabled={hasPath} onSelect={onDrawPath}><MousePointer2 />Draw path</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onDrawPath}><Route />{hasPath ? 'Redraw path' : 'Draw path'}</DropdownMenuItem>
         <DropdownMenuItem disabled={hasOcean} onSelect={onAddOcean}><Waves />Add ocean</DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <DropdownMenuLabel>Models</DropdownMenuLabel>
-        <DropdownMenuItem disabled={importingModel} onSelect={onDemoTree}><Leaf />Demo tree</DropdownMenuItem>
         {project.assets.map(asset => {
           const used = project.entities.some(entity =>
             (entity.kind === 'instance' || entity.kind === 'plantingRegion') && entity.assetId === asset.id);

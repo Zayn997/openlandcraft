@@ -3,9 +3,9 @@ import { InspectorSection } from './InspectorSection';
 import { useEffect, useState } from 'react';
 import { Check, Plus, RotateCcw, Route, Trash2 } from 'lucide-react';
 import { type Editor, type Path } from '@openlandcraft/core';
-import { pathLength, type PathPoint } from '@openlandcraft/landscape';
+import { pathLength, roundedRoutePoints, type PathPoint } from '@openlandcraft/landscape';
 
-export function PathInspector({ path, editor, cancel, snapping, onSnapping }: { path: Path; editor: Editor; cancel: () => void; snapping: boolean; onSnapping: (value: boolean) => void }) {
+export function PathInspector({ path, editor, cancel, snapping, onSnapping, onRedraw,onCorner }: { path: Path; editor: Editor; cancel: () => void; snapping: boolean; onSnapping: (value: boolean) => void; onRedraw:()=>void;onCorner:(index:number|null)=>void }) {
   const [draft, setDraft] = useState(path), [error, setError] = useState('');
   useEffect(() => setDraft(path), [path]);
   const state = editor.getSnapshot();
@@ -17,7 +17,9 @@ export function PathInspector({ path, editor, cancel, snapping, onSnapping }: { 
   };
   return <PanelBody className="path-inspector">
     <PanelHeading title={<>{path.name}</>} icon={<><Route size={24} /></>} subtitle={<>Editable landscape path</>} />
-    <div className="path-summary"><strong>{pathLength(draft.points).toFixed(1)} <small>m</small></strong><span>Plan length · {draft.points.length} points</span></div>
+    <FieldMessage>Click a numbered corner in the viewer to adjust its rounding. Drag the point to move it.</FieldMessage>
+    <div className="path-summary"><strong>{pathLength(roundedRoutePoints(draft)).toFixed(1)} <small>m</small></strong><span>Plan length · {draft.points.length} points</span></div>
+    <Button variant="outline" className="mb-3" disabled={!!state.gestureLabel} onClick={onRedraw}><Route size={15}/>Redraw path</Button>
     <Field variant="checkbox"><CheckboxInput aria-label="Snap path points" checked={snapping} onChange={event => onSnapping(event.target.checked)} />Snap to 0.5 m grid and building edges</Field>
     <form onInputCapture={begin} onSubmit={event => { event.preventDefault(); if (!error) editor.commit(); }}>
       <InspectorSection sectionId="pathinspector-path-surface" title={<>Path surface</>}>
@@ -30,8 +32,9 @@ export function PathInspector({ path, editor, cancel, snapping, onSnapping }: { 
       <InspectorSection sectionId="pathinspector-control-points" title={<>Control points<span>{draft.points.length} / 16</span></>} defaultOpen={false}>
         <FieldMessage>Drag the numbered handles or enter X/Z below. Endpoints snap within 0.8 m of visible building corners and edge midpoints; internal points snap to the grid. Dimensions show horizontal plan distances.</FieldMessage>
         {draft.points.map((point, index) => <PointEditor key={index} title={<>Point {index + 1}{index === 0 ? ' · Start' : index === draft.points.length - 1 ? ' · End' : ''}</>} actions={<>
-          <Button variant="ghost" size="icon-sm" type="button" aria-label={`Insert after path point ${index + 1}`} disabled={index === draft.points.length - 1 || draft.points.length >= 16} onClick={() => { const points = [...draft.points], next = points[index + 1]; points.splice(index + 1, 0, [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2]); change({ ...draft, points }); }}><Plus size={14} /></Button>
-          <Button variant="ghost" size="icon-sm" type="button" aria-label={`Remove path point ${index + 1}`} disabled={draft.points.length <= 2} onClick={() => change({ ...draft, points: draft.points.filter((_, i) => i !== index) })}><Trash2 size={14} /></Button></>}>
+          {index>0&&index<draft.points.length-1&&<Button variant="ghost" size="sm" disabled={!!state.gestureLabel} aria-label={`Round path corner ${index+1}`} onClick={()=>onCorner(index)}>Round corner</Button>}
+          <Button variant="ghost" size="icon-sm" type="button" aria-label={`Insert after path point ${index + 1}`} disabled={index === draft.points.length - 1 || draft.points.length >= 16} onClick={() => { const points = [...draft.points], next = points[index + 1],cornerRounding=draft.cornerRounding?.slice(); points.splice(index + 1, 0, [(point[0] + next[0]) / 2, (point[1] + next[1]) / 2]);cornerRounding?.splice(index+1,0,0);onCorner(null); change({ ...draft, points,cornerRounding }); }}><Plus size={14} /></Button>
+          <Button variant="ghost" size="icon-sm" type="button" aria-label={`Remove path point ${index + 1}`} disabled={draft.points.length <= 2} onClick={() => {onCorner(null);change({ ...draft, points: draft.points.filter((_, i) => i !== index),cornerRounding:draft.cornerRounding?.filter((_,i)=>i!==index).map((value,i,array)=>i===0||i===array.length-1?0:value) });}}><Trash2 size={14} /></Button></>}>
           <FieldGrid columns={2}>{point.map((value, axis) => <NumberField key={axis} label={`Path point ${index + 1} ${axis === 0 ? 'X' : 'Z'}`} value={value} min={-100} max={100} onChange={value => { const points = draft.points.map(p => [...p] as PathPoint); points[index][axis] = value; change({ ...draft, points }); }} />)}</FieldGrid>
         </PointEditor>)}
       </InspectorSection>

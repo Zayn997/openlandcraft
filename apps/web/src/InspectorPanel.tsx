@@ -3,8 +3,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { ChevronsDownUp, ChevronsUpDown, PanelRightClose, PanelRightOpen, Settings2 } from 'lucide-react';
 import { InspectorSectionsProvider, useInspectorSections } from './InspectorSectionsContext';
 
-export function InspectorPanel({ children, scope, selectionKey, mobileActive, editing }: {
-  children: ReactNode; scope: string; selectionKey: string; mobileActive: boolean; editing: boolean;
+export function InspectorPanel({ children, scope, selectionKey, mobileActive, editing, reveal = false }: {
+  children: ReactNode; scope: string; selectionKey: string; mobileActive: boolean; editing: boolean; reveal?: boolean;
 }) {
   const sections = useInspectorSections(scope);
   const [width, setWidth] = useState(() => {
@@ -16,6 +16,11 @@ export function InspectorPanel({ children, scope, selectionKey, mobileActive, ed
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('olc-inspector-collapsed') === 'true'; } catch { return false; }
   });
+  useEffect(() => {
+    if (!reveal) return;
+    setCollapsed(false);
+    try { localStorage.setItem('olc-inspector-collapsed', 'false'); } catch { /* Optional preference. */ }
+  }, [reveal]);
   const expandButton = useRef<HTMLButtonElement>(null), collapseButton = useRef<HTMLButtonElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   useEffect(() => { scroll.current?.scrollTo(0, 0); }, [selectionKey, scope]);

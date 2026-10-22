@@ -7,6 +7,7 @@ import {inlandWaterCamera} from './inland-camera';
 import {buildRiverField,riverWave} from './river-water';
 import {riverGeometry} from './river-geometry';
 import {sampleRiverVolume} from './inland-sampling';
+import {waterDepthProjection} from './water-projection';
 
 function riverScene(){
   const project=createSite({name:'Inland test',width:60,depth:60,resolution:129,preset:'flat'});
@@ -14,6 +15,22 @@ function riverScene(){
   project.entities=[river];return {river,site:evaluateProject(project).site};
 }
 describe('inland water volumes',()=>{
+  it.each(['river','lake'] as const)('preserves positive %s bed thickness in perspective and Axo depth captures',kind=>{
+    const river=riverScene(),project=createSite({name:'Lake depth capture',width:50,depth:50,resolution:129,preset:'flat'});
+    const lake=createLake(project,[[-10,-10],[10,-10],[10,10],[-10,10]]);project.entities=[lake];
+    const site=kind==='river'?river.site:evaluateProject(project).site,water=kind==='river'?river.river:lake;
+    const pose=inlandWaterCamera(site,water)!,[x,,z]=pose.position;
+    const level=kind==='river'?sampleRiverVolume(buildRiverField(site,river.river),river.river,site,x,z,0)!.surface:lake.level;
+    const surface=new THREE.Vector3(x,level,z),bed=new THREE.Vector3(x,groundHeight(x,z,site),z);
+    expect(surface.y-bed.y).toBeGreaterThan(.5);
+    for(const camera of [new THREE.PerspectiveCamera(42,1.5,.1,1500),new THREE.OrthographicCamera(-30,30,20,-20,.1,1500)]){
+      camera.position.copy(surface).add(new THREE.Vector3(12,16,20));camera.lookAt(surface);camera.updateMatrixWorld();
+      const c=waterDepthProjection(camera,new THREE.Vector4());
+      const decode=(point:THREE.Vector3)=>{const depth=point.clone().project(camera).z*.5+.5;return(c.x*depth+c.y)/(c.z*depth+c.w);};
+      const thickness=decode(bed)-decode(surface),expected=surface.clone().applyMatrix4(camera.matrixWorldInverse).z-bed.clone().applyMatrix4(camera.matrixWorldInverse).z;
+      expect(thickness).toBeGreaterThan(.25);expect(thickness).toBeCloseTo(expected,8);
+    }
+  });
   it('closes a concave lake boundary without filling its dry notch',()=>{
     const points:[number,number][]=[[-8,-8],[8,-8],[8,0],[0,0],[0,8],[-8,8]];
     const plane=new THREE.PlaneGeometry(20,20,40,40);plane.rotateX(-Math.PI/2);

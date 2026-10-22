@@ -3,6 +3,7 @@ import { Editor, createOcean, createSite, type Ocean } from '@openlandcraft/core
 import { serializeProject } from '@openlandcraft/project';
 import { createHeightfield } from '@openlandcraft/landscape';
 import { buildCoastField, CoastHistory, coastSample } from './coast';
+import {profileHistoryWaveReference} from './history-wave';
 
 const beach = () => {
   const site = createSite({ name: 'Beach', width: 40, depth: 30, resolution: 129, preset: 'flat' }).site;
@@ -11,6 +12,20 @@ const beach = () => {
 const ocean = () => ({ ...createOcean('ocean'), direction: 180, amplitude: 0.4, wavelength: 10, speed: 1, dryingTime: 8 });
 
 describe('reference-driven coastal progression', () => {
+  it('advects and decays residual deep-water foam like the analytic reference without swell solves',()=>{
+    const site=beach();site.terrain.heights.fill(-10);
+    const a=new CoastHistory(site,ocean()),b=new CoastHistory(site,ocean()),f=a.field,i=Math.floor(f.rows/2)*f.columns+Math.floor(f.columns/2);
+    a.foam[i]=b.foam[i]=.8;a.wet[i]=b.wet[i]=.5;
+    try{
+      for(let step=0;step<20;step++){
+        profileHistoryWaveReference(true);b.advance(.05);
+        profileHistoryWaveReference(false);a.advance(.05);
+      }
+      expect(a.clock).toBe(b.clock);expect(a.pixels).toEqual(b.pixels);
+      a.foam.forEach((value,i)=>expect(value).toBeCloseTo(b.foam[i],7));
+      expect(a.foam.filter(value=>value>0).length).toBeGreaterThan(1);
+    }finally{profileHistoryWaveReference(false);}
+  });
   it('shortens and slows shallow waves and produces finite fronts for every direction', () => {
     const site = beach(), water = ocean(), f = buildCoastField(site, water), r = Math.floor(f.rows / 2), index = (x: number) => r * f.columns + Math.round((x / f.width + 0.5) * (f.columns - 1));
     const shallow = index(2), offshore = index(16);

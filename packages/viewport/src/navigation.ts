@@ -5,6 +5,7 @@ export const orientationDirections = {
   right: [1, 0, 0], left: [-1, 0, 0],
   top: [0, 1, 0.000001], bottom: [0, -1, 0.000001],
   perspective: [0.73, 0.67, 0.95],
+  axonometric: [1, 1, 1],
 } as const;
 export type OrientationView = keyof typeof orientationDirections;
 export type CameraView = OrientationView | 'shore' | 'underwater' | 'river-underwater' | 'lake-underwater';
