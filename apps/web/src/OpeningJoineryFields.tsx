@@ -23,13 +23,13 @@ export function OpeningJoineryFields({kind,value,onChange,project,disabled=false
    {material('frame')}
    {value.frameMaterial==='local'&&<Field variant="color"><ColorInput aria-label="Frame color" value={value.frameColor} onChange={e=>change({frameColor:e.target.value})}/><span>Frame color</span></Field>}
   </>}
-  <Field variant="checkbox"><CheckboxInput checked={value.infill} onChange={e=>change({infill:e.target.checked})}/>{kind==='door'?'Door panel':'Window glass'}</Field>
+  <Field>Infill<SelectInput aria-label="Opening infill" value={value.infill?'filled':'transparent'} disabled={disabled} onValueChange={mode=>change({infill:mode==='filled'})}><SelectOption value="transparent">Transparent / open</SelectOption><SelectOption value="filled">{kind==='door'?'Door panel · material':'Window glass · tinted'}</SelectOption></SelectInput></Field>
   {value.infill&&<>
    <Field>{kind==='door'?'Panel':'Glass'} thickness · m<NumericInput aria-label={kind==='door'?'Panel thickness':'Glass thickness'} min={kind==='door'?.02:.005} max={kind==='door'?.2:.05} step="any" required value={value.thickness} onChange={e=>change({thickness:e.target.value})}/></Field>
    {kind==='door'&&material('panel')}
    {(kind==='window'||value.panelMaterial==='local')&&<Field variant="color"><ColorInput aria-label={kind==='door'?'Panel color':'Glass tint'} value={value.infillColor} onChange={e=>change({infillColor:e.target.value})}/><span>{kind==='door'?'Panel color':'Glass tint'}</span></Field>}
    {kind==='window'&&<Field>Glass opacity<NumericInput aria-label="Glass opacity" min={.05} max={.8} step="any" required value={value.opacity} onChange={e=>change({opacity:e.target.value})}/></Field>}
   </>}
-  <FieldMessage>Details sit inside the rough opening. Frame width reduces clear space; depth and thickness are capped at wall thickness. Panels are closed. Frames, panels and glass follow the wall curve and arch.</FieldMessage>
+  <FieldMessage>Transparent / open leaves the opening clear. Frames, material panels and tinted glass are optional and follow the wall curve and arch. Frame width reduces clear space; depth and thickness are capped at wall thickness.</FieldMessage>
  </fieldset>;
 }

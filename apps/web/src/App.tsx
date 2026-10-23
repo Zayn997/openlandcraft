@@ -1,5 +1,4 @@
 import {joineryDraft,joineryValue} from './OpeningJoineryFields';
-import {defaultOpeningJoinery} from '@openlandcraft/core';
 import {ArchitecturalMaterialFields} from './ArchitecturalMaterialFields';
 import { upgradeLibraryFish } from './fish-upgrade';
 import { isBirdAsset, isFishAsset, isGroundCharacterAsset } from '@openlandcraft/core';
@@ -219,7 +218,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const activeProjection=view==='shore'||view.endsWith('underwater')?'perspective':projection;
   const [frameToken, setFrameToken] = useState(0);
   const [frameCancelToken, setFrameCancelToken] = useState(0);
-  const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0',shape:'rectangle',archRise:'.45',joinery:joineryDraft('door',defaultOpeningJoinery('door'))},window:{width:'1.4',height:'1.2',sill:'0.9',shape:'rectangle',archRise:'.6',joinery:joineryDraft('window',defaultOpeningJoinery('window'))}});
+  const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0',shape:'rectangle',archRise:'.45',joinery:joineryDraft('door')},window:{width:'1.4',height:'1.2',sill:'0.9',shape:'rectangle',archRise:'.6',joinery:joineryDraft('window')}});
   const [openingFocus,setOpeningFocus]=useState<{wallId:string;openingId:string}|null>(null);
   const [openingStatus,setOpeningStatus]=useState('Point at a wall to preview an opening.');
   const [metricsSource]=useState(createViewportMetricsSource);

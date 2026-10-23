@@ -28,7 +28,7 @@ export function OpeningTools({ project,kind, dimensions, onDimensions, snapping,
     <InspectorSection sectionId="placement-joinery" title="Frame & infill" defaultOpen={false}><OpeningJoineryFields kind={kind} value={dimensions.joinery} project={project} onChange={joinery=>onDimensions({...dimensions,joinery})}/></InspectorSection>
     <Field variant="checkbox"><CheckboxInput checked={snapping} onChange={event => onSnapping(event.target.checked)} />Snap offset to 0.1 m</Field>
     <p className="opening-feedback" role="status">{levels.length ? status : 'Add a building or a floor with walls to begin.'}</p>
-    <FieldMessage>{dimensions.joinery.frame?'Frame enabled. ':''}{dimensions.joinery.infill?(kind==='door'?'Closed door panel enabled.':'Glass enabled.'):'Empty opening.'} Adjust Frame & infill above.</FieldMessage>
+    <FieldMessage>{dimensions.joinery.frame?'Frame enabled. ':''}{dimensions.joinery.infill?(kind==='door'?'Closed door panel enabled.':'Glass enabled.'):'Transparent / open.'} Adjust Frame & infill above.</FieldMessage>
     <FieldMessage>Hover to preview, click to place, then click another position to repeat. Drag to orbit or pan. Each placement is one undo step.</FieldMessage>
     <Button variant="default" className="primary-button" onClick={onFinish}>Finish placing <span>Esc</span></Button>
     <FieldMessage>After finishing placement, click a door or window to select it. Double-click it to move and resize it.</FieldMessage>
