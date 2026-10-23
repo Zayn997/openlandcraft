@@ -1,5 +1,10 @@
 import { objectLayer } from './layers';
 import { footprint, sameCorner, remapWallJunctions } from './architecture';
+import { curvedWallPoints } from './curved-walls';
+import {roofEavesRadius,remapRoofTower} from './conical-roofs';
+import {wallWalkPlanPoints,wallWalkProfile} from './wall-walks';
+import {remapSpiralTower} from './spiral-stairs';
+import {remapStairConnections,resolveStairConnections,levelToWorld} from './stair-connections';
 import type { BuildingPart, Entity, Level, Project, Unit, Wall } from './model';
 
 export const isBuildingPart = (e: Entity): e is BuildingPart => e.kind === 'wall' || e.kind === 'slab' || e.kind === 'roof';
@@ -15,15 +20,22 @@ export function scopeParts(project: Project, id: string): BuildingPart[] {
   return project.entities.filter((e): e is BuildingPart => isBuildingPart(e) && (scope?.kind === 'unit' ? scope.memberIds.includes(e.id) : e.parentId === id));
 }
 export function floorHeight(project: Project, level: Level): number {
-  return level.storeyHeight ?? Math.round(Math.max(0.5, ...scopeParts(project, level.id).filter(p => p.kind !== 'roof').map(p => p.elevation + (p.kind === 'wall' ? p.height : p.kind === 'slab' ? p.thickness : 0))) * 1000000) / 1000000;
+  return level.storeyHeight ?? Math.round(Math.max(0.5, ...scopeParts(project, level.id).filter(p => p.kind !== 'roof').map(p => p.elevation + (p.kind === 'wall' ? p.height : p.kind === 'slab' ? p.stairs?.rise??p.thickness : 0))) * 1000000) / 1000000;
 }
-export function partBounds(part: BuildingPart, level: Level) {
-  const points = part.kind === 'wall' ? [part.start, part.end] : footprint(part);
+function basePartBounds(part: BuildingPart, level: Level) {
+  if(part.kind==='slab'&&part.stairs?.spiral){const a=level.rotation*Math.PI/180,r=part.stairs.spiral.radius,x=level.position[0]+part.center[0]*Math.cos(a)+part.center[1]*Math.sin(a),z=level.position[2]-part.center[0]*Math.sin(a)+part.center[1]*Math.cos(a);return {min:[x-r,level.position[1]+part.elevation-part.thickness,z-r],max:[x+r,level.position[1]+part.elevation+part.stairs.rise+(part.stairs.railings?.height??0),z+r]};}
+  if(part.kind==='roof'&&part.cone){const a=level.rotation*Math.PI/180,r=roofEavesRadius(part),x=level.position[0]+part.center[0]*Math.cos(a)+part.center[1]*Math.sin(a),z=level.position[2]-part.center[0]*Math.sin(a)+part.center[1]*Math.cos(a);return {min:[x-r,level.position[1]+part.elevation,z-r],max:[x+r,level.position[1]+part.elevation+part.rise,z+r]};}
+  const points = part.kind === 'wall' ? [...curvedWallPoints(part,level.rotation),...wallWalkPlanPoints(part,level.rotation)] : footprint(part);
   const angle = level.rotation * Math.PI / 180, c = Math.cos(angle), s = Math.sin(angle);
   const world = points.map(([x, z]) => [level.position[0] + x * c + z * s, level.position[2] - x * s + z * c]);
   const pad = part.kind === 'wall' ? part.thickness / 2 : 0;
-  return { min: [Math.min(...world.map(p => p[0])) - pad, level.position[1] + part.elevation, Math.min(...world.map(p => p[1])) - pad],
-    max: [Math.max(...world.map(p => p[0])) + pad, level.position[1] + part.elevation + (part.kind === 'wall' ? part.height : part.kind === 'slab' ? part.thickness : part.rise), Math.max(...world.map(p => p[1])) + pad] };
+  return { min: [Math.min(...world.map(p => p[0])) - pad, level.position[1] + part.elevation-(part.kind==='slab'&&part.stairs?part.thickness:0), Math.min(...world.map(p => p[1])) - pad],
+    max: [Math.max(...world.map(p => p[0])) + pad, level.position[1] + part.elevation + (part.kind === 'wall' ? Math.max(part.height+(part.battlements?.height??0),part.walk?part.height-part.walk.parapetHeight+(part.walk.railings?.height??0):0) : part.kind === 'slab' ? part.stairs?part.stairs.rise+(part.stairs.railings?.height??0):part.thickness : part.rise), Math.max(...world.map(p => p[1])) + pad] };
+}
+export function partBounds(part:BuildingPart,level:Level){
+  const box=basePartBounds(part,level);
+  if(part.kind==='slab'&&part.stairs?.landings)for(const pad of Object.values(part.stairs.landings)){const world=pad.points.map(p=>levelToWorld(level,p));box.min=[Math.min(box.min[0],...world.map(p=>p[0]-.04)),Math.min(box.min[1],level.position[1]+pad.base),Math.min(box.min[2],...world.map(p=>p[1]-.04))];box.max=[Math.max(box.max[0],...world.map(p=>p[0]+.04)),Math.max(box.max[1],level.position[1]+pad.elevation+(part.stairs.railings?.height??0)),Math.max(box.max[2],...world.map(p=>p[1]+.04))];}
+  return box;
 }
 export function scopeBounds(project: Project, id: string) {
   if(project.entities.some(e=>e.id===id&&e.kind==='building')){
@@ -63,7 +75,7 @@ export function duplicateAbove(project: Project, sourceId: string, height: numbe
   const parts = scopeParts(project, sourceId), content = parts.filter(p => p.kind !== 'roof'), roofs = parts.filter(p => p.kind === 'roof');
   if (!content.length) throw new Error('Add walls or a floor before duplicating.');
   assertCompleteJoins(project, parts.filter((p): p is Wall => p.kind === 'wall'));
-  const bottom = Math.min(...content.map(p => p.elevation)), top = Math.max(...content.map(p => p.elevation + (p.kind === 'wall' ? p.height : p.kind === 'slab' ? p.thickness : 0)));
+  const bottom = Math.min(...content.map(p => p.elevation)), top = Math.max(...content.map(p => p.elevation + (p.kind === 'wall' ? p.height : p.kind === 'slab' ? p.stairs?.rise??p.thickness : 0)));
   if (height < top - bottom - 0.00001) throw new Error(`Use at least ${(top - bottom).toFixed(2)} m to keep the copied storey clear of this one.`);
   const y = level.position[1] + height;
   if (y > 100) throw new Error('The next floor exceeds the 100 m elevation limit.');
@@ -76,14 +88,25 @@ export function duplicateAbove(project: Project, sourceId: string, height: numbe
   const map = new Map(content.map((p, i) => [p.id, `${prefix}-part-${i}`]));
   for (const roof of roofs) map.set(roof.id, roof.id); // Carry the top roof; never sandwich copies between storeys.
   const copied: BuildingPart[] = content.map(p => ({ ...structuredClone(p), id: map.get(p.id)!, parentId: target.id,
-    ...(p.kind === 'wall' ? { junctions:remapWallJunctions(p,map), openings: p.openings?.map((o, i) => ({ ...o, id: `${prefix}-opening-${content.indexOf(p)}-${i}` })) } : {}) }));
-  const movedRoofs = roofs.map(p => ({ ...p, parentId: target.id }));
+    ...(p.kind === 'wall' ? { junctions:remapWallJunctions(p,map), openings: p.openings?.map((o, i) => ({ ...o, id: `${prefix}-opening-${content.indexOf(p)}-${i}` })) } : {}) })).map(p=>p.kind==='slab'?remapStairConnections(remapSpiralTower(p,map),map,[0,0],true):p);
+  const movedRoofs = roofs.map(p => remapRoofTower({ ...p, parentId: target.id },map));
   const movedRoofIds = roofs.map(p => p.id);
   const overlaps = (a: ReturnType<typeof partBounds>, b: ReturnType<typeof partBounds>) => [0, 1, 2].every(k => Math.min(a.max[k], b.max[k]) - Math.max(a.min[k], b.min[k]) > 0.001);
   // Conservative world-space bounds reject uncertain overlaps, including rotated neighbors.
   for (const candidate of [...copied, ...movedRoofs]) for (const existing of project.entities.filter(isBuildingPart)) {
     if (movedRoofIds.includes(existing.id)) continue;
+    // Identical flights copied vertically have parallel undersides/treads. Their full-height
+    // AABBs can overlap at a storey boundary even though the actual solids are clear.
+    if(candidate.kind==='slab'&&candidate.stairs&&!candidate.stairs.spiral&&!candidate.stairs.landings&&map.get(existing.id)===candidate.id&&height>=candidate.thickness+candidate.stairs.rise/candidate.stairs.steps+(candidate.stairs.railings?.height??0)-.001)continue;
     const host = ownerLevel(project, existing.id);
+    // A tower's full AABB includes its empty central well. Use that known circular
+    // void when a spiral's underside overlaps the storey boundary vertically.
+    if(host&&candidate.kind==='slab'&&candidate.stairs?.spiral&&!candidate.stairs.landings&&existing.kind==='wall'&&existing.curve&&Math.abs(existing.curve.sweepAngle)===360){
+      const worldCenter=(p:[number,number],l:Level)=>{const a=l.rotation*Math.PI/180;return [l.position[0]+p[0]*Math.cos(a)+p[1]*Math.sin(a),l.position[2]-p[0]*Math.sin(a)+p[1]*Math.cos(a)];};
+      const a=worldCenter(candidate.center,target),b=worldCenter(existing.curve.center,host),inner=Math.min(existing.curve.radius-existing.thickness/2,existing.walk?existing.curve.radius-wallWalkProfile(existing).inner:Infinity);
+      const voidRadius=inner*Math.cos(Math.PI/120)-(existing.walk?.railings ? 0.04 : 0);
+      if(Math.hypot(a[0]-b[0],a[1]-b[1])+candidate.stairs.spiral.radius<=voidRadius+1e-8)continue;
+    }
     if (host && overlaps(partBounds(candidate, target), partBounds(existing, host))) throw new Error(`The copy would overlap ${existing.name}. Choose another height or clear the destination.`);
   }
   const units = source.kind === 'unit' ? [source] : project.entities.filter((e): e is Unit => e.kind === 'unit' && e.parentId === level.id);
@@ -105,7 +128,7 @@ export function duplicateAbove(project: Project, sourceId: string, height: numbe
   content.forEach(p=>{objectLayers[map.get(p.id)!]=objectLayer(project,p.id);});
   units.forEach((u,i)=>{objectLayers[copiedUnits[i].id]=objectLayer(project,u.id);});
   if(!level.buildingId)objectLayers[buildingId]=objectLayer(project,level.id);
-  const candidate={...project,entities,objectLayers};
+  const candidate=resolveStairConnections(project,{...project,entities,objectLayers});
   if(new TextEncoder().encode(JSON.stringify(candidate,null,2)).length>40*1024*1024)throw new Error('This copy exceeds the 40 MB project limit.');
   return { project: candidate, selectedId: source.kind === 'unit' ? copiedUnits[0].id : target.id, levelId: target.id, addedIds: added.map(e => e.id), movedRoofIds, height };
 }

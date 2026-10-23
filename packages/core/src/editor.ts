@@ -1,6 +1,12 @@
 import { canEditObject, objectLayer, objectOwners, layerState, type Layer } from './layers';
 import {replaceJoinedWall,detachInvalidJunctions} from './architecture';
 import {duplicateAbove} from './floors';
+import {followRoofTowers} from './conical-roofs';
+import {followSpiralTowers} from './spiral-stairs';
+import {stairEndpoints} from './stairs';
+const stairStartDelta=(a:import('./model').Slab,b:import('./model').Slab)=>{const x=stairEndpoints(a).start,y=stairEndpoints(b).start;return [y[0]-x[0],y[1]-x[1]];};
+import {resolveStairConnections} from './stair-connections';
+import {architecturalMaterials,architecturalMaterialUsers,architecturalMaterialSchema,type ArchitecturalMaterial} from './architectural-materials';
 import { parseProject, type Entity, type Project } from './model';
 import {detachedInstance,plantingInstanceChanged,regeneratePlanting} from './regions';
 import type {PlantingRegion} from './model';
@@ -13,6 +19,8 @@ export type Command =
   | {type:'removeLayer';id:string}
   | {type:'activeLayer';id:string}
   | {type:'assignLayer';ids:string[];layerId:string}
+  | {type:'architecturalMaterial';material:ArchitecturalMaterial}
+  | {type:'assignArchitecturalMaterial';ids:string[];materialId:string|null}
   | {type:'duplicateAbove';sourceId:string;height:number;prefix:string}
   | {type:'ungroup';id:string}
   | {type:'planting';region:PlantingRegion}
@@ -50,7 +58,7 @@ function freeze<T>(value: T): T {
 
 export function applyCommand(project: Project, command: Command): Project {
   if (command.type === 'batch') return command.commands.reduce(applyCommand, project);
-  if (command.type === 'terrain') {
+  if (command.type === 'terrain'&&!project.entities.some(e=>e.kind==='slab'&&e.stairs?.connections?.bottom&&!e.stairs.connections.bottom.floorId)) {
     if (!canEditObject(project, 'terrain')) throw new Error('Unlock and show the terrain layer before editing.');
     const field = terrainSchema.parse(command.field);
     if (field.columns !== project.site.terrain.columns || field.rows !== project.site.terrain.rows) throw new Error('A brush cannot change terrain resolution.');
@@ -58,6 +66,23 @@ export function applyCommand(project: Project, command: Command): Project {
   }
   let candidate: Project;
   switch (command.type) {
+    case 'architecturalMaterial': {
+      const material=architecturalMaterialSchema.parse(command.material),library=architecturalMaterials(project);
+      const protectedOwner=(id:string,seen=new Set<string>()):boolean=>{if(seen.has(id))return false;seen.add(id);return layerState(project,objectLayer(project,id)).locked||objectOwners(project,id).some(owner=>protectedOwner(owner,seen));};
+      for(const e of architecturalMaterialUsers(project,material.id))if(protectedOwner(e.id))throw new Error('Unlock the layer containing '+e.name+' before updating its shared material.');
+      candidate={...project,architecturalMaterials:library.some(m=>m.id===material.id)?library.map(m=>m.id===material.id?material:m):[...library,material]};break;
+    }
+    case 'assignArchitecturalMaterial': {
+      const library=architecturalMaterials(project),ids=new Set(command.ids);
+      if(!ids.size||[...ids].some(id=>!project.entities.some(e=>e.id===id&&(e.kind==='wall'||e.kind==='slab'||e.kind==='roof'))))throw new Error('Choose existing walls, floors, stairs or roofs.');
+      if(command.materialId&&!library.some(m=>m.id===command.materialId))throw new Error('Choose an existing shared material.');
+      candidate={...project,architecturalMaterials:library,entities:project.entities.map(e=>ids.has(e.id)?{...e,materialId:command.materialId??undefined}:e)};break;
+    }
+    case 'terrain': {
+      if(!canEditObject(project,'terrain'))throw new Error('Unlock and show the terrain layer before editing.');
+      const field=terrainSchema.parse(command.field);if(field.columns!==project.site.terrain.columns||field.rows!==project.site.terrain.rows)throw new Error('A brush cannot change terrain resolution.');
+      candidate={...project,site:{...project.site,terrain:field}};break;
+    }
     case 'layer': candidate={...project,layers:project.layers.some(l=>l.id===command.layer.id)?project.layers.map(l=>l.id===command.layer.id?command.layer:l):[...project.layers,command.layer]}; break;
     case 'activeLayer': {
       const status=layerState(project,command.id);
@@ -90,6 +115,12 @@ export function applyCommand(project: Project, command: Command): Project {
       if (!current) throw new Error('The object no longer exists.');
       if (current.kind !== command.entity.kind) throw new Error('An object cannot change its kind.');
       let replacement=command.entity;
+      if(current.kind==='roof'&&current.cone?.wallId&&replacement.kind==='roof'&&replacement.cone?.wallId===current.cone.wallId&&(Math.abs(replacement.cone.radius-current.cone.radius)>1e-8||replacement.center.some((v,i)=>Math.abs(v-current.center[i])>1e-8)||Math.abs(replacement.elevation-current.elevation)>1e-8))throw new Error('Detach the roof before editing its tower-controlled radius, center or eaves elevation.');
+      if(current.kind==='slab'&&current.stairs&&replacement.kind==='slab'&&replacement.stairs&&JSON.stringify(current.stairs.connections)===JSON.stringify(replacement.stairs.connections)){
+        const a=current,b=replacement,s=a.stairs!,t=b.stairs!;
+        const moved=b.center.some((v,i)=>Math.abs(v-a.center[i])>1e-6),elevation=Math.abs(b.elevation-a.elevation)>1e-6,direction=Math.abs(t.direction-s.direction)>1e-6;
+        if(s.connections?.top&&(Math.abs(t.rise-s.rise)>1e-6||direction||(!s.spiral&&(moved||Math.abs(b.depth-a.depth)>1e-6))||s.spiral&&(moved||t.spiral?.turns!==s.spiral.turns||t.spiral?.clockwise!==s.spiral.clockwise))||s.connections?.bottom&&(elevation||!s.spiral&&moved&&Math.hypot(...stairStartDelta(a,b))>1e-6))throw new Error('Use Attach bottom or Attach top to change surface-controlled dimensions, or detach first.');
+      }
       if(current.kind==='instance'&&current.regionId&&replacement.kind==='instance'&&plantingInstanceChanged(current,replacement))replacement=detachedInstance(replacement);
       if(current.kind==='plantingRegion'&&replacement.kind==='plantingRegion'&&(Object.keys(current) as (keyof PlantingRegion)[]).some(key=>key!=='name'&&key!=='visible'&&JSON.stringify(current[key])!==JSON.stringify((replacement as PlantingRegion)[key])))throw new Error('Preview regeneration to change planting region settings.');
       candidate = { ...project, entities: current.kind==='wall'&&replacement.kind==='wall'?replaceJoinedWall(project.entities,current,replacement):project.entities.map((e) => e.id === command.entity.id ? replacement : e) };
@@ -124,6 +155,7 @@ export function applyCommand(project: Project, command: Command): Project {
     case 'rename': candidate = { ...project, name: command.name }; break;
     case 'materials': candidate = { ...project, site:{...project.site,materials:command.materials} }; break;
   }
+  candidate=resolveStairConnections(project,{...candidate,entities:followSpiralTowers(project.entities,followRoofTowers(project.entities,candidate.entities))});
   const layerCommand=['layer','removeLayer','activeLayer','assignLayer'].includes(command.type);
   if(!layerCommand){
     const changed=new Set(project.entities.filter(before=>JSON.stringify(before)!==JSON.stringify(candidate.entities.find(e=>e.id===before.id))).map(e=>e.id));
@@ -147,7 +179,7 @@ export function applyCommand(project: Project, command: Command): Project {
   if(candidate.activeLayerId){const status=layerState(candidate,candidate.activeLayerId);if(!status.visible||status.locked)candidate={...candidate,activeLayerId:candidate.layers.find(l=>{const s=layerState(candidate,l.id);return s.visible&&!s.locked;})?.id??null};}
   const parsed = parseProject(candidate);
   // Entity edits share the unchanged terrain instead of retaining duplicate grids.
-  parsed.site.terrain = project.site.terrain;
+  if(command.type!=='terrain')parsed.site.terrain = project.site.terrain;
   parsed.entities = parsed.entities.map((entity) => { const existing = project.entities.find((before) => before.id === entity.id); return existing && JSON.stringify(existing) === JSON.stringify(entity) ? existing : entity; });
   if (command.type !== 'asset' && command.type !== 'removeAsset' && !(command.type === 'insert' && command.assets?.length)) parsed.assets = project.assets;
   return freeze(parsed);
@@ -187,7 +219,7 @@ export class Editor {
     const sameLayers = JSON.stringify([project.layers,project.objectLayers,project.activeLayerId])===JSON.stringify([before.layers,before.objectLayers,before.activeLayerId]);
     const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
-    const sameMaterials=JSON.stringify(project.site.materials)===JSON.stringify(before.site.materials);
+    const sameMaterials=JSON.stringify([project.site.materials,project.architecturalMaterials])===JSON.stringify([before.site.materials,before.architecturalMaterials]);
     const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution;
     const patch = terrainOnly ? diffHeights(before.site.terrain, project.site.terrain) : null;
     if (patch && !patch.indices.length) {

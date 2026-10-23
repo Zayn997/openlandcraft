@@ -1,3 +1,6 @@
+import {OpeningJoineryMeshes} from './opening-joinery';
+import {ArchitecturalSurface} from './architectural-material';
+import {architecturalMaterialFor,type ArchitecturalMaterial} from '@openlandcraft/core';
 import { FishInstances } from './fish';
 import { GroundCharacterInstances } from './ground-characters';
 import { BirdInstances } from './birds';
@@ -5,7 +8,7 @@ import { plantGrowthScale, PLANT_GROWTH_MS } from './plant-growth';
 import { advancePlantWind, createPlantWind } from './plant-wind';
 import {ArchitectureLabel} from './architecture-label';
 import {buildPartGeometry} from './architecture-geometry';
-import {footprint, wallLength, type Wall} from '@openlandcraft/core';
+import {openingCenter,curvePoint, footprint, wallLength, type Wall} from '@openlandcraft/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
@@ -101,25 +104,26 @@ export function ModelInstances({ asset, instances, project, selectedId, selected
   return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={instances} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect} /></group> : null;
 }
 
-function Part({ entity, walls, selected, dimensions, onSelect, onWallPick, onOutlinePick, activeEdit=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; activeEdit?: boolean; blocking?:boolean;interactive:boolean;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {
+function Part({ entity, project, material, walls, selected, dimensions, onSelect, onWallPick, onOutlinePick, activeEdit=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; activeEdit?: boolean; blocking?:boolean;interactive:boolean;project:Project;material?:ArchitecturalMaterial;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {
   const geometry=useMemo(()=>buildPartGeometry(entity,walls),[entity,walls]);
   useEffect(()=>()=>geometry.dispose(),[geometry]);
   const points=entity.kind==='wall'?[entity.start,entity.end]:footprint(entity);
   const edges=entity.kind==='wall'?1:points.length;
-  const top=entity.elevation+(entity.kind==='wall'?entity.height:entity.kind==='roof'?entity.rise:entity.thickness);
+  const top=entity.elevation+(entity.kind==='wall'?entity.height:entity.kind==='roof'?entity.rise:entity.stairs?.rise??entity.thickness);
   return <>
     <mesh userData={{copyEntityId:entity.id}} raycast={!activeEdit&&(interactive||blocking)?THREE.Mesh.prototype.raycast:noRaycast} geometry={geometry} castShadow receiveShadow onPointerDown={event=>{if(blocking)event.stopPropagation();}} onPointerMove={event=>{if(blocking)event.stopPropagation();}} onClick={event=>{if(blocking)event.stopPropagation();if(interactive&&event.delta<=4){event.stopPropagation();if(entity.kind==='wall'&&onWallPick&&!event.shiftKey)onWallPick(entity.id,false);else if((entity.kind==='slab'||entity.kind==='roof')&&onOutlinePick&&!event.shiftKey)onOutlinePick(entity.id,false);else onSelect(entity.id,event.shiftKey);}}} onDoubleClick={event=>{if(blocking)event.stopPropagation();if(interactive&&entity.kind==='wall'&&onWallPick&&!event.shiftKey&&event.delta<=4){event.stopPropagation();onWallPick(entity.id,true);}else if(interactive&&(entity.kind==='slab'||entity.kind==='roof')&&onOutlinePick&&!event.shiftKey&&event.delta<=4){event.stopPropagation();onOutlinePick(entity.id,true);}}}>
-      <meshStandardMaterial color={entity.color} roughness={0.8}/><Edges raycast={noRaycast} color={selected?'#d7f29c':'#798174'} lineWidth={selected?2:0.7}/>
+      <ArchitecturalSurface definition={material} color={entity.color} landing={entity.kind==='slab'&&!!entity.stairs?.landings}/><Edges raycast={noRaycast} color={selected?'#d7f29c':'#798174'} lineWidth={selected?2:0.7}/>
     </mesh>
-    {dimensions&&Array.from({length:edges},(_,i)=>{const a=points[i],b=points[(i+1)%points.length];return <ArchitectureLabel key={i} position={[(a[0]+b[0])/2,top+0.18,(a[1]+b[1])/2]} text={`${Math.hypot(b[0]-a[0],b[1]-a[1]).toFixed(2)} m`}/>;})}
-    {dimensions&&entity.kind==='wall'&&(entity.openings??[]).map(o=>{const t=(o.offset+o.width/2)/wallLength(entity);return <ArchitectureLabel key={o.id} position={[entity.start[0]+(entity.end[0]-entity.start[0])*t,entity.elevation+o.sill+o.height/2,entity.start[1]+(entity.end[1]-entity.start[1])*t]} text={`${o.kind} · ${o.width.toFixed(2)} × ${o.height.toFixed(2)} m`}/>;})}
+    {entity.kind==='wall'&&<OpeningJoineryMeshes wall={entity} project={project}/>}
+    {dimensions&&entity.kind==='slab'&&entity.stairs?<ArchitectureLabel position={[entity.center[0],top+.4,entity.center[1]]} text={entity.stairs.spiral?`R ${entity.stairs.spiral.radius.toFixed(2)} m · width ${entity.width.toFixed(2)} m`:`Width ${entity.width.toFixed(2)} m · rise ${entity.stairs.rise.toFixed(2)} m`}/>:dimensions&&entity.kind==='roof'&&entity.cone?<ArchitectureLabel position={[entity.center[0],top+.4,entity.center[1]]} text={`R ${entity.cone.radius.toFixed(2)} m · height ${entity.rise.toFixed(2)} m · overhang ${entity.cone.overhang.toFixed(2)} m`}/>:dimensions&&entity.kind==='wall'&&entity.curve?<ArchitectureLabel position={[curvePoint(entity.curve,0.5)[0],top+0.3,curvePoint(entity.curve,0.5)[1]]} text={`R ${entity.curve.radius.toFixed(2)} m · ${Math.abs(entity.curve.sweepAngle).toFixed(1)}°`}/>:dimensions&&Array.from({length:edges},(_,i)=>{const a=points[i],b=points[(i+1)%points.length];return <ArchitectureLabel key={i} position={[(a[0]+b[0])/2,top+0.18,(a[1]+b[1])/2]} text={`${Math.hypot(b[0]-a[0],b[1]-a[1]).toFixed(2)} m`}/>;})}
+    {dimensions&&entity.kind==='wall'&&(entity.openings??[]).map(o=>{const center=openingCenter(entity,o);return <ArchitectureLabel key={o.id} position={[center[0],entity.elevation+o.sill+o.height/2,center[1]]} text={`${o.kind} · ${o.width.toFixed(2)} × ${o.height.toFixed(2)} m`}/>;})}
   </>;
 }
-export function BuildingLevel({ level, parts, selectedId, selectedIds=[], onSelect, onWallPick, onOutlinePick, editingPartId, interactive, placingOpening=false, editingOpening=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; editingPartId?: string; editingOpening?:boolean;placingOpening?:boolean;interactive:boolean; level: Level; parts: BuildingPart[]; selectedId: string | null; selectedIds?:string[]; onSelect: (id: string,additive?:boolean) => void }) {
+export function BuildingLevel({ level, project, parts, selectedId, selectedIds=[], onSelect, onWallPick, onOutlinePick, editingPartId, interactive, placingOpening=false, editingOpening=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; editingPartId?: string; editingOpening?:boolean;placingOpening?:boolean;interactive:boolean; project: Project; level: Level; parts: BuildingPart[]; selectedId: string | null; selectedIds?:string[]; onSelect: (id: string,additive?:boolean) => void }) {
   const wallKey=JSON.stringify(parts.filter(p=>p.kind==='wall'));
   const walls=useMemo(()=>parts.filter((p):p is Wall=>p.kind==='wall'),[wallKey]);
   return <group position={level.position} rotation={[0,level.rotation*Math.PI/180,0]}>
-    {parts.map(entity=><Part key={entity.id} entity={entity} walls={walls} interactive={interactive} activeEdit={editingPartId===entity.id} onWallPick={onWallPick} onOutlinePick={onOutlinePick} blocking={editingOpening||placingOpening&&entity.kind!=='wall'} selected={selectedIds.length?selectedIds.includes(entity.id):selectedId===entity.id||selectedId===level.id} dimensions={interactive&&selectedId===entity.id&&!selectedIds.length&&editingPartId!==entity.id} onSelect={onSelect}/>)}
+    {parts.map(entity=><Part key={entity.id} entity={entity} project={project} material={architecturalMaterialFor(project,entity)} walls={walls} interactive={interactive} activeEdit={editingPartId===entity.id} onWallPick={onWallPick} onOutlinePick={onOutlinePick} blocking={editingOpening||placingOpening&&entity.kind!=='wall'} selected={selectedIds.length?selectedIds.includes(entity.id):selectedId===entity.id||selectedId===level.id} dimensions={interactive&&selectedId===entity.id&&!selectedIds.length&&editingPartId!==entity.id} onSelect={onSelect}/>)}
   </group>;
 }
 

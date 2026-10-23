@@ -1,4 +1,6 @@
 import {footprint} from './architecture';
+import {curvedWallDistance} from './curved-walls';
+import {wallWalkContains} from './wall-walks';
 import {lakeDistance,pointSegmentDistance,polygonArea,pathStrips,roundedRoutePoints,sampleRiver,type PathPoint} from '@openlandcraft/landscape';
 import {groundHeight,parseProject,type Entity,type Instance,type MaterialRegion,type PlantingRegion,type Project,type Region} from './model';
 import {evaluateProject} from './surface';
@@ -28,8 +30,10 @@ export function plantingObstacle(project:Project,region:Pick<PlantingRegion,'cle
       const angle=origin.rotation*Math.PI/180,cos=Math.cos(angle),sin=Math.sin(angle);
       tests.push((x,z)=>{
         const dx=x-origin.position[0],dz=z-origin.position[2],p:PathPoint=[dx*cos-dz*sin,dx*sin+dz*cos];
-        if((e.kind==='slab'||e.kind==='roof')&&e.outline)return lakeDistance(footprint(e),p[0],p[1])>=-margin;
-        if(e.kind==='wall')return pointSegmentDistance(p,e.start,e.end)<=e.thickness/2+margin;
+        if(e.kind==='slab'&&e.stairs?.landings&&Object.values(e.stairs.landings).some(pad=>lakeDistance(pad.points,p[0],p[1])>=-margin))return true;
+        if((e.kind==='slab'||e.kind==='roof')&&(e.outline||e.kind==='slab'&&e.stairs))return lakeDistance(footprint(e),p[0],p[1])>=-margin;
+        if(e.kind==='wall')return wallWalkContains(e,p,margin)||(e.curve?curvedWallDistance(e,p):pointSegmentDistance(p,e.start,e.end))<=e.thickness/2+margin;
+        if(e.kind==='roof'&&e.cone)return Math.hypot(p[0]-e.center[0],p[1]-e.center[1])<=e.cone.radius+e.cone.overhang+margin;
         const center=e.kind==='block'?[0,0]:e.center,width=e.kind==='block'?e.size[0]:e.width,depth=e.kind==='block'?e.size[2]:e.depth;
         return Math.abs(p[0]-center[0])<=width/2+margin&&Math.abs(p[1]-center[1])<=depth/2+margin;
       });

@@ -1,9 +1,22 @@
 import type { Entity, Project, Roof, Slab, Wall } from './model';
+import { curvePoint, curvedWallPoints } from './curved-walls';
+import { onWallInterior, pathParameter, wallEnds, wallPathPoint, wallTangent, wallCrossings } from './wall-path';
+import { curvedCapSlices, mixedJoinIssue, mixedWallCap, replaceMixedJoinedWall, snapArcEndPoint } from './curved-wall-joins';
+import { openingIntersectsSpan } from './opening-profile';
+import { isCircularWall } from './curved-walls';
+import { conicalRoofIssue,roofEavesRadius } from './conical-roofs';
+import { battlementIssue } from './battlements';
+import { wallWalkIssue } from './wall-walks';
+import { stairFootprint,stairsIssue } from './stairs';
+import {railingIssue} from './railings';
+import {spiralIssue} from './spiral-stairs';
 
 export type PlanPoint = [number, number];
-export const wallLength = (wall: Wall) => Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+export const wallLength = (wall: Wall) => wall.curve ? wall.curve.radius * Math.abs(wall.curve.sweepAngle) * Math.PI / 180 : Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
 export const sameCorner = (a: PlanPoint, b: PlanPoint) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.00001;
 export function footprint(part: Slab | Roof): PlanPoint[] {
+  if(part.kind==='slab'&&part.stairs)return stairFootprint(part);
+  if(part.kind==='roof'&&part.cone)return Array.from({length:120},(_,i)=>[part.center[0]+roofEavesRadius(part)*Math.cos(i*Math.PI/60),part.center[1]+roofEavesRadius(part)*Math.sin(i*Math.PI/60)]);
   const points: PlanPoint[] = part.outline ?? [[-part.width / 2, -part.depth / 2], [part.width / 2, -part.depth / 2], [part.width / 2, part.depth / 2], [-part.width / 2, part.depth / 2]];
   return points.map(p => [p[0] + part.center[0], p[1] + part.center[1]]);
 }
@@ -12,15 +25,13 @@ const sub = (a: PlanPoint, b: PlanPoint): PlanPoint => [a[0] - b[0], a[1] - b[1]
 const dot = (a: PlanPoint, b: PlanPoint) => a[0] * b[0] + a[1] * b[1];
 /** Centerline parameter; the authored endpoint remains on the host, while its solid ends at the face. */
 export function wallParameter(point: PlanPoint, wall: Wall): number {
-  const direction = sub(wall.end, wall.start);
-  return dot(sub(point, wall.start), direction) / dot(direction, direction);
+  return pathParameter(point,wall);
 }
 function onInterior(point: PlanPoint, wall: Wall): boolean {
-  const t = wallParameter(point, wall), direction = sub(wall.end, wall.start);
-  return t > 1e-5 && t < 1 - 1e-5 && Math.abs(cross(direction, sub(point, wall.start))) / wallLength(wall) < 1e-5;
+  return onWallInterior(point,wall);
 }
 function related(a: Wall, b: Wall): boolean {
-  return [a.start,a.end].some(p=>sameCorner(p,b.start)||sameCorner(p,b.end)) || Object.values(a.junctions??{}).includes(b.id) || Object.values(b.junctions??{}).includes(a.id);
+  return wallEnds(a).some(e=>wallEnds(b).some(f=>sameCorner(a[e],b[f]))) || Object.values(a.junctions??{}).includes(b.id) || Object.values(b.junctions??{}).includes(a.id);
 }
 function joinHosts(wall: Wall, corner: PlanPoint, walls: Wall[]) {
   const id=wall.junctions?.[sameCorner(corner,wall.start)?'start':'end'];
@@ -79,6 +90,7 @@ export function replaceJoinedWall(entities: Entity[], previous: Wall, next: Wall
     changed = false;
     for (const w of walls) if (!connected.has(w.id) && walls.some(n => connected.has(n.id) && related(w,n))) { connected.add(w.id); changed = true; }
   }
+  if(walls.some(w=>connected.has(w.id)&&w.curve))return detachInvalidJunctions(replaceMixedJoinedWall(entities,previous,next));
   const profile = joinChange&&next.joins || previous.height !== next.height || previous.elevation !== next.elevation;
   const result = entities.map(entity => {
     if (entity.id === previous.id) return next;
@@ -110,29 +122,49 @@ export function replaceJoinedWall(entities: Entity[], previous: Wall, next: Wall
   return detachInvalidJunctions(result.map(e=>e.kind==='wall'?moved.get(e.id)!:e));
 }
 
+function openingsIssue(wall:Wall,usableStart:number,usableEnd:number):string|null{
+  const openings=wall.openings??[],circle=isCircularWall(wall),length=wallLength(wall),margin=Math.max(.1,wall.thickness*2),ids=new Set<string>();
+  for(const opening of openings){
+    if(ids.has(opening.id))return 'Opening IDs must be unique within a wall.';
+    ids.add(opening.id);
+    if((circle?opening.offset<0||opening.offset>=length||opening.width>length-.2:opening.offset<usableStart+margin-1e-6||opening.offset+opening.width>usableEnd-margin+1e-6)||opening.sill+opening.height>wall.height-.1+1e-6)return 'The opening must fit inside its wall, clear of corners, junctions and the wall top. Move or resize the opening first.';
+    if(opening.kind==='door'&&opening.sill!==0)return 'Doors must start at the wall base.';
+    for(const other of openings)if(other.id!==opening.id&&openingIntersectsSpan(wall,other,opening.offset+1e-6,opening.offset+opening.width-1e-6)&&opening.sill<other.sill+other.height+.1-1e-6&&opening.sill+opening.height+.1>other.sill+1e-6)return 'Keep at least 0.1 m of wall between openings.';
+  }
+  return null;
+}
 export function architectureIssue(entities: Entity[]): string | null {
   const walls = entities.filter((e): e is Wall => e.kind === 'wall');
   for (const wall of walls) {
+    const battlements=battlementIssue(wall);if(battlements)return battlements;
+    const walk=wallWalkIssue(wall);if(walk)return walk;
+    const railing=railingIssue(wall);if(railing)return railing;
     for(const [end,id] of Object.entries(wall.junctions??{})) {
       const host=walls.find(w=>w.id===id);
       if(!wall.joins||!host?.joins||host.id===wall.id||host.parentId!==wall.parentId||!onInterior(wall[end as 'start'|'end'],host))return 'A wall junction must reference a joined wall on the same level, with its endpoint on the host centerline.';
     }
-    const length = wallLength(wall), openings = wall.openings ?? [], margin = Math.max(0.1, wall.thickness * 2);
-    const polygon=wallFootprint(wall,walls);
-    const usableStart=Math.max(0,polygon[0][0],polygon[3][0]), usableEnd=Math.min(length,polygon[1][0],polygon[2][0]);
-    const ids = new Set<string>();
-    for (const opening of openings) {
-      if (ids.has(opening.id)) return 'Opening IDs must be unique within a wall.';
-      ids.add(opening.id);
-      if (opening.offset < usableStart + margin - 1e-6 || opening.offset + opening.width > usableEnd - margin + 1e-6 || opening.sill + opening.height > wall.height - 0.1 + 1e-6) return 'The opening must fit inside its wall, clear of corners, junctions and the wall top. Move or resize the opening first.';
-      if (opening.kind === 'door' && opening.sill !== 0) return 'Doors must start at the wall base.';
-      for (const other of openings) if (other.id !== opening.id && opening.offset < other.offset + other.width + 0.1 - 1e-6 && opening.offset + opening.width + 0.1 > other.offset + 1e-6 && opening.sill < other.sill + other.height + 0.1 - 1e-6 && opening.sill + opening.height + 0.1 > other.sill + 1e-6) return 'Keep at least 0.1 m of wall between openings.';
+    const mixed=mixedJoinIssue(wall,walls);if(mixed)return mixed;
+    if (wall.curve) {
+      const c=wall.curve;
+      if (Math.abs(c.sweepAngle)<1 || wallLength(wall)<0.2) return 'Draw an arc of at least 1° and 0.2 m.';
+      if (c.radius-wall.thickness/2<=0.1) return 'Keep at least 0.1 m of clear inner radius.';
+      if (!sameCorner(wall.start,curvePoint(c,0)) || !sameCorner(wall.end,curvePoint(c,1))) return 'Curved wall endpoints must follow its center, radius and angles.';
+      if (curvedWallPoints(wall).some(p=>p.some(v=>Math.abs(v)+wall.thickness/2>100+1e-6))) return 'Keep the curved wall within ±100 m of its level origin.';
+      const cap=(end:'start'|'end')=>[-wall.thickness/2,wall.thickness/2].map(side=>{const p=mixedWallCap(wall,end,side,walls);if(!p)return end==='start'?0:wallLength(wall);const t=pathParameter(p,wall),turn=360/Math.abs(c.sweepAngle),near=end==='start'?0:1;return (t+Math.round((near-t)/turn)*turn)*wallLength(wall);});
+      const issue=openingsIssue(wall,Math.max(0,...cap('start')),Math.min(wallLength(wall),...cap('end')));if(issue)return issue;
+      continue;
     }
+    const length = wallLength(wall);
+    const polygon=wallFootprint(wall,walls);
+    const capXs=(end:'start'|'end')=>curvedCapSlices(wall,walls).flatMap(side=>{const p=mixedWallCap(wall,end,side,walls);return p?[dot(sub(p,wall.start),wallTangent(wall,0))]:[];});
+    const usableStart=Math.max(0,polygon[0][0],polygon[3][0],...capXs('start')), usableEnd=Math.min(length,polygon[1][0],polygon[2][0],...capXs('end'));
+    const issue=openingsIssue(wall,usableStart,usableEnd);if(issue)return issue;
     if(wall.joins)for (const corner of [wall.start, wall.end]) {
-      const neighbors = walls.filter(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && (sameCorner(w.start, corner) || sameCorner(w.end, corner)));
+      const neighbors = walls.filter(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && wallEnds(w).some(end=>sameCorner(w[end],corner)));
       const hosts=joinHosts(wall,corner,walls);
       if (neighbors.length > 1 || hosts.length > 1 || hosts.length && neighbors.length) return 'A shared endpoint supports two walls. Connect an interior wall to the middle of one existing wall for a T junction.';
       for (const other of neighbors) {
+        if(other.curve)continue; // Validated using offset curves and endpoint tangents above.
         const away = sameCorner(corner, wall.start) ? wall.end : wall.start;
         const otherAway = sameCorner(corner, other.start) ? other.end : other.start;
         const a = sub(away, corner), b = sub(otherAway, corner);
@@ -144,6 +176,7 @@ export function architectureIssue(entities: Entity[]): string | null {
         if (Math.abs(wall.elevation - other.elevation) > 1e-6 || Math.abs(wall.height - other.height) > 1e-6) return 'Joined walls must share their height and base elevation; their thicknesses may differ.';
       }
       for(const host of hosts) {
+        if(host.curve)continue;
         if(Math.abs(wall.elevation-host.elevation)>1e-6||Math.abs(wall.height-host.height)>1e-6)return 'Joined walls must share their height and base elevation; their thicknesses may differ.';
         const sine=Math.abs(cross(sub(wall.end,wall.start),sub(host.end,host.start)))/(length*wallLength(host));
         if(sine<0.5-1e-6)return 'Interior wall joins must meet the host at an angle of at least 30°.';
@@ -170,6 +203,8 @@ export function architectureIssue(entities: Entity[]): string | null {
   for (const e of entities) if ((e.kind === 'slab' || e.kind === 'roof') && e.outline) {
     const issue = outlineIssue(e.outline); if (issue) return issue;
   }
+  for(const e of entities)if(e.kind==='roof'){const issue=conicalRoofIssue(e,entities);if(issue)return issue;}
+  for(const e of entities)if(e.kind==='slab'){const issue=stairsIssue(e)??spiralIssue(e,entities)??railingIssue(e);if(issue)return issue;}
   return null;
 }
 
@@ -178,13 +213,15 @@ export function wallFootprint(wall: Wall, walls: Wall[]): PlanPoint[] {
   const length = wallLength(wall), dx = (wall.end[0] - wall.start[0]) / length, dz = (wall.end[1] - wall.start[1]) / length, half = wall.thickness / 2;
   const edge = (end: boolean, side: number): PlanPoint => {
     const corner = end ? wall.end : wall.start;
+    const mixed=mixedWallCap(wall,end?'end':'start',side*half,walls);
+    if(mixed)return [(mixed[0]-wall.start[0])*dx+(mixed[1]-wall.start[1])*dz,-(mixed[0]-wall.start[0])*dz+(mixed[1]-wall.start[1])*dx];
     const host=joinHosts(wall,corner,walls)[0];
     if(host) {
       const hx=(host.end[0]-host.start[0])/wallLength(host),hz=(host.end[1]-host.start[1])/wallLength(host);
       const localX=hx*dx+hz*dz,localY=-hx*dz+hz*dx;
       if(Math.abs(localY)>1e-6) return [(end?length:0)+(end?-1:1)*host.thickness/(2*Math.abs(localY))+localX*side*half/localY,side*half];
     }
-    const neighbor = wall.joins&&walls.find(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && (sameCorner(w.start, corner) || sameCorner(w.end, corner)));
+    const neighbor = wall.joins&&walls.find(w => w.joins && w.id !== wall.id && w.parentId === wall.parentId && wallEnds(w).some(end=>sameCorner(w[end],corner)));
     if (!neighbor) return [end ? length : 0, side * half];
     const away = sameCorner(neighbor.start, corner) ? neighbor.end : neighbor.start;
     const nx = (away[0] - corner[0]) / wallLength(neighbor), nz = (away[1] - corner[1]) / wallLength(neighbor);
@@ -197,10 +234,11 @@ export function wallFootprint(wall: Wall, walls: Wall[]): PlanPoint[] {
 }
 
 export function snapWallPoint(point: PlanPoint, walls: Wall[], previous?: PlanPoint): PlanPoint {
-  const nearest = walls.flatMap(w => [w.start, w.end]).sort((a,b)=>Math.hypot(...sub(a,point))-Math.hypot(...sub(b,point)))[0];
+  const nearest = walls.flatMap(w => wallEnds(w).map(end=>w[end])).sort((a,b)=>Math.hypot(...sub(a,point))-Math.hypot(...sub(b,point)))[0];
   if (nearest && Math.hypot(...sub(nearest, point)) <= 0.4) return [...nearest];
   const targets=walls.map(w=>{
     let t=wallParameter(point,w);
+    if(w.curve){const p=wallPathPoint(w,t);return {t,p,distance:Math.hypot(...sub(p,point)),wall:w};}
     // Preserve a nearly orthogonal segment while snapping onto the host centerline.
     if(previous)for(const axis of [0,1] as const) {
       const span=w.end[axis]-w.start[axis];
@@ -210,11 +248,17 @@ export function snapWallPoint(point: PlanPoint, walls: Wall[], previous?: PlanPo
     }
     const p:PlanPoint=[w.start[0]+t*(w.end[0]-w.start[0]),w.start[1]+t*(w.end[1]-w.start[1])];
     return {t,p,distance:Math.hypot(...sub(p,point)),wall:w};
-  }).filter(hit=>hit.t>0&&hit.t<1&&hit.distance<=hit.wall.thickness/2+0.4).sort((a,b)=>a.distance-b.distance);
+  }).filter(hit=>(hit.wall.curve&&Math.abs(hit.wall.curve.sweepAngle)===360||hit.t>0&&hit.t<1)&&hit.distance<=hit.wall.thickness/2+0.4).sort((a,b)=>a.distance-b.distance);
   if(targets.length)return targets[0].p;
   const result: PlanPoint = point.map(v => Math.round(v * 4) / 4) as PlanPoint;
   if (previous) { if (Math.abs(result[0] - previous[0]) <= 0.4) result[0] = previous[0]; if (Math.abs(result[1] - previous[1]) <= 0.4) result[1] = previous[1]; }
   return result;
+}
+export function snapCurveDrawingPoint(point:PlanPoint,points:PlanPoint[],walls:Wall[],snapping:boolean):PlanPoint{
+  if(!snapping)return [...point];
+  if(points.length===1)return snapWallPoint(point,walls);
+  const grid=point.map(v=>Math.round(v*4)/4) as PlanPoint;
+  return points.length===2?snapArcEndPoint(grid,points[0],points[1],walls):grid;
 }
 export function createWallChain(project: Project, parentId: string, points: PlanPoint[], closed: boolean, id: string = crypto.randomUUID(), snapping = true, thickness?:number): Wall[] {
   const existing = project.entities.filter((e): e is Wall => e.kind === 'wall' && e.parentId === parentId && e.joins===true);
@@ -227,6 +271,7 @@ export function createWallChain(project: Project, parentId: string, points: Plan
   const all=[...existing,...created];
   for(const wall of created)for(const other of all) {
     if(wall.id===other.id)continue;
+    if(other.curve){if(wallCrossings(wall,other).some(p=>onInterior(p,wall)&&onInterior(p,other)))throw new Error('Crossing walls are not supported. Finish the straight wall on the curved wall instead.');continue;}
     const a=sub(wall.end,wall.start),b=sub(other.end,other.start),c=sub(other.start,wall.start),den=cross(a,b);
     if(Math.abs(den)>1e-8) {
       const t=cross(c,b)/den,u=cross(c,a)/den;

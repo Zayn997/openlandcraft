@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
-import { dragWall, wallLength, type Editor, type Level, type Wall, type WallDragMode } from '@openlandcraft/core';
+import { curvePoint, isCircularWall, dragWall, wallLength, type Editor, type Level, type Wall, type WallDragMode } from '@openlandcraft/core';
 import { buildPartGeometry } from './architecture-geometry';
 import { ArchitectureLabel } from './architecture-label';
 
@@ -38,8 +38,8 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
     target.setPointerCapture(event.pointerId);
     active.current = { wall, mode, pointer: event.pointerId, plane, origin, screen: [event.clientX, event.clientY], moved: false, valid: true, changed: false,
       release: () => { try { target.releasePointerCapture(event.pointerId); } catch { /* Already released. */ } } };
-    editor.begin(mode === 'move' ? 'Move wall' : 'Move wall endpoint'); setRejected(false);
-    onStatus('Drag on the floor plane. Joined corners follow. Escape cancels.');
+    editor.begin(mode === 'move' ? 'Move wall' : mode==='radius'?'Resize wall radius':'Move wall endpoint'); setRejected(false);
+    onStatus(wall.curve?'Drag on the floor plane. Center moves the wall; Radius reshapes it. Escape cancels.':'Drag on the floor plane. Joined corners follow. Escape cancels.');
   };
   const move = (event: ThreeEvent<PointerEvent>) => {
     const drag = active.current; if (!drag || drag.pointer !== event.pointerId) return;
@@ -53,7 +53,7 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
       const delta = point.sub(drag.origin).applyAxisAngle(new THREE.Vector3(0, 1, 0), -level.rotation * Math.PI / 180);
       const next = dragWall(drag.wall, drag.mode, [delta.x, delta.z], snapping);
       editor.preview({ type: 'replace', entity: next });
-      drag.valid = true; drag.changed = JSON.stringify([next.start, next.end]) !== JSON.stringify([drag.wall.start, drag.wall.end]); setRejected(false);
+      drag.valid = true; drag.changed = JSON.stringify([next.start, next.end, next.curve]) !== JSON.stringify([drag.wall.start, drag.wall.end, drag.wall.curve]); setRejected(false);
       onStatus('Wall length ' + wallLength(next).toFixed(2) + ' m. Release to apply; Escape cancels.');
     } catch (error) {
       drag.valid = false; setRejected(true);
@@ -63,23 +63,27 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
   const up = (event: ThreeEvent<PointerEvent>) => {
     const drag = active.current; if (!drag || drag.pointer !== event.pointerId) return;
     move(event); event.stopPropagation(); active.current = null;
-    if (drag.valid && drag.changed) { editor.commit(); onStatus('Wall updated. Joined corners and hosted openings were preserved.'); }
+    if (drag.valid && drag.changed) { editor.commit(); onStatus(wall.curve?'Curved wall updated. It remains one editable object.':'Wall updated. Joined corners and hosted openings were preserved.'); }
     else { editor.cancel(); onStatus(drag.valid ? 'Wall unchanged.' : 'Drag cancelled. Original walls restored.'); }
     drag.release(); if (orbit) orbit.enabled = true; setRejected(false);
   };
   const events = { onPointerMove: move, onPointerUp: up, onPointerCancel: cancel, onLostPointerCapture: cancel, onClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation(), onDoubleClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation() };
   const color = rejected ? '#ed775f' : '#d7f29c', top = wall.elevation + wall.height;
+  const handles:{mode:WallDragMode;point:[number,number];label:string}[]=wall.curve
+    ? [{mode:'move',point:wall.curve.center,label:'Center'},{mode:'radius',point:curvePoint(wall.curve,0.5),label:'Radius'},...(!isCircularWall(wall)?[{mode:'start' as const,point:wall.start,label:'Start'},{mode:'end' as const,point:wall.end,label:'End'}]:[])]
+    : [{mode:'start',point:wall.start,label:'Start'},{mode:'end',point:wall.end,label:'End'}];
+  const middle=wall.curve?curvePoint(wall.curve,0.5):[(wall.start[0]+wall.end[0])/2,(wall.start[1]+wall.end[1])/2];
   return <group position={level.position} rotation={[0, level.rotation * Math.PI / 180, 0]} userData={{ waterCaptureExclude: true, copyEntityId: wall.id }}>
     <mesh geometry={geometry} {...events} onPointerDown={event => down(event, 'move')}>
       <meshBasicMaterial color={color} transparent opacity={0.2} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
       <Edges color={color} lineWidth={2} raycast={noRaycast} />
     </mesh>
-    {(['start', 'end'] as const).map((end, i) => <group key={end}>
-      <mesh position={[wall[end][0], top + 0.22, wall[end][1]]} {...events} onPointerDown={event => down(event, end)}>
+    {handles.map(({mode,point,label}) => <group key={mode}>
+      <mesh position={[point[0], top + 0.22, point[1]]} {...events} onPointerDown={event => down(event, mode)}>
         <sphereGeometry args={[0.23, 16, 12]} /><meshBasicMaterial color={rejected ? color : '#f6d49a'} depthTest={false} />
       </mesh>
-      <ArchitectureLabel position={[wall[end][0], top + 0.7, wall[end][1] + (topView ? 0.7 : 0)]} text={i === 0 ? 'Start' : 'End'} />
+      <ArchitectureLabel position={[point[0], top + 0.7, point[1] + (topView ? 0.7 : 0)]} text={label} />
     </group>)}
-    <ArchitectureLabel position={[(wall.start[0] + wall.end[0]) / 2, top + 0.4, (wall.start[1] + wall.end[1]) / 2 + (topView ? 1 : 0)]} text={wallLength(wall).toFixed(2) + ' m · drag wall or endpoints'} />
+    <ArchitectureLabel position={[middle[0], top + 1.2, middle[1] + (topView ? 1 : 0)]} text={wall.curve?`R ${wall.curve.radius.toFixed(2)} m · ${Math.abs(wall.curve.sweepAngle).toFixed(1)}°`:wallLength(wall).toFixed(2) + ' m · drag wall or endpoints'} />
   </group>;
 }

@@ -8,6 +8,8 @@ export function OpeningSelectionSummary({ wall, opening, level, onFrame }: { wal
     <FieldMessage>{wall.name} · {level?.name}</FieldMessage>
     <dl className="opening-summary">
       <dt>Width × height</dt><dd>{opening.width.toFixed(2)} × {opening.height.toFixed(2)} m</dd>
+      <dt>Shape</dt><dd>{opening.shape==='arch'?`Round arch · ${opening.archRise!.toFixed(2)} m rise`:'Rectangular'}</dd>
+      <dt>Details</dt><dd>{[opening.joinery?.frame?'Frame':null,opening.joinery?.panel?'Door panel':null,opening.joinery?.glass?'Glass':null].filter(Boolean).join(' · ')||'Empty opening'}</dd>
       <dt>Wall offset</dt><dd>{opening.offset.toFixed(2)} m</dd>
       {opening.kind === 'window' && <><dt>Sill height</dt><dd>{opening.sill.toFixed(2)} m</dd></>}
     </dl>

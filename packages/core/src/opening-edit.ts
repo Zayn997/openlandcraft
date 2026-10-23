@@ -1,14 +1,19 @@
+import {openingJoineryIssue} from './opening-joinery';
 import { architectureIssue } from './architecture';
 import { openingSchema, type Opening, type Wall } from './model';
+import { wrapOpeningOffset } from './opening-profile';
 
 export type OpeningDragMode = 'move' | 'start' | 'end' | 'top';
 
 /** Replace only one hosted opening, retaining its ID and the order of siblings. */
-export function editOpening(wall: Wall, id: string, patch: Partial<Pick<Opening, 'offset' | 'width' | 'height' | 'sill'>>): Wall {
+export function editOpening(wall: Wall, id: string, patch: Partial<Pick<Opening, 'offset' | 'width' | 'height' | 'sill' | 'shape' | 'archRise'|'joinery'>>): Wall {
   const original = wall.openings?.find(o => o.id === id);
   if (!original) throw new Error('This opening no longer exists. Select another opening.');
   const opening = { ...original, ...patch };
-  if (!openingSchema.safeParse(opening).success) throw new Error('Use positive dimensions of 0.3–20 m, a sill of 0–20 m, and an offset of 0–200 m.');
+  if(opening.shape!=='arch')delete opening.archRise;
+  if(opening.shape==='arch'&&(!Number.isFinite(opening.archRise)||opening.archRise!<.1||opening.archRise!>opening.height-.1+1e-8))throw new Error('Arch rise must be at least 0.1 m and leave at least 0.1 m of vertical jamb below it.');
+  const joineryIssue=openingJoineryIssue(opening);if(joineryIssue)throw new Error(joineryIssue);
+  if (!openingSchema.safeParse(opening).success) throw new Error('Use positive dimensions of 0.3–20 m, a sill of 0–20 m, and an offset of 0–650 m.');
   const updated = { ...wall, openings: wall.openings!.map(o => o.id === id ? opening : o) };
   const issue = architectureIssue([{...updated,junctions:undefined}]); // The command validates all connected walls.
   if (issue) throw new Error(issue);
@@ -27,5 +32,6 @@ export function dragOpening(wall: Wall, id: string, mode: OpeningDragMode, delta
     : mode === 'end' ? { width: snap(end + delta) - opening.offset }
     : { height: snap(opening.sill + opening.height + delta) - opening.sill };
   // Subtracting snapped edges should not leave 1.6999999999999993 in the inspector.
+  if('offset' in patch&&patch.offset!==undefined)patch.offset=wrapOpeningOffset(wall,patch.offset);
   return editOpening(wall, id, Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, Number(value.toFixed(10))])));
 }

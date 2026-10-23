@@ -17,7 +17,7 @@ function copy(editor:Editor,id:string,prefix:string,height=3.4){
 describe('Direct upward repetition',()=>{
   it('migrates v12 without changing geometry, hosts, asset bytes or optional authoring data',()=>{
     const snapshot=structuredClone(legacy),migrated=parseProject(legacy);
-    expect(migrated).toEqual({...legacy,version:18,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"});expect(legacy).toEqual(snapshot);
+    expect(migrated).toEqual({...legacy,version:31,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"});expect(legacy).toEqual(snapshot);
     expect(()=>parseProject({...legacy,entities:[...legacy.entities,{id:'u',kind:'unit',parentId:'site',name:'Future data',visible:true,memberIds:[]}]})).toThrow();
   });
   it('copies a floor twice with new host and opening IDs, fixed elevations and one top roof',()=>{

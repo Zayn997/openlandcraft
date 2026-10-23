@@ -2,8 +2,14 @@ import { Button, PanelHeading, CheckboxInput, ColorInput, Field, FieldControl, F
 import { useEffect, useState } from 'react';
 import { applyCommand, unitForPart, wallLength, type Editor, type Level, type Wall } from '@openlandcraft/core';
 import { InspectorSection } from './InspectorSection';
+import { CurvedWallEditor } from './CurvedWallEditor';
+import { BattlementsEditor } from './BattlementsEditor';
+import { WallWalkEditor } from './WallWalkEditor';
 
-export function WallEditor({ wall, level, editing, editor, snapping, onSnapping, onFrame, onFinish, onSelect, status, onStatus }: {
+export function WallEditor(props:Parameters<typeof StraightWallEditor>[0]){
+  return props.wall.curve?<CurvedWallEditor {...props}/>:<StraightWallEditor {...props}/>;
+}
+function StraightWallEditor({ wall, level, editing, editor, snapping, onSnapping, onFrame, onFinish, onSelect, status, onStatus }: {
   wall: Wall; level?: Level; editing: boolean; editor: Editor; snapping: boolean; onSnapping: (value: boolean) => void;
   onFrame: () => void; onFinish: () => void; onSelect: (id: string) => void; status: string; onStatus: (message: string) => void;
 }) {
@@ -34,6 +40,8 @@ export function WallEditor({ wall, level, editing, editor, snapping, onSnapping,
     {editing ? <>
       <FieldMessage>Drag the wall body to move it on the floor plane, or drag Start / End to reshape it. This floor is isolated and its roof hidden. Floors and roofs keep their outlines.</FieldMessage>
       <Field variant="checkbox"><CheckboxInput checked={snapping} disabled={!!state.gestureLabel} onChange={e => onSnapping(e.target.checked)} />Snap wall edits to 0.25 m</Field>
+      <WallWalkEditor wall={wall} editor={editor} onStatus={onStatus}/>
+      <BattlementsEditor wall={wall} editor={editor} onStatus={onStatus}/>
       <InspectorSection sectionId="wall-dimensions" title="Dimensions & appearance"><form onSubmit={event => { event.preventDefault(); if (candidate && !issue && changed) try { editor.execute({ type: 'replace', entity: candidate }, 'Edit wall dimensions'); onStatus('Wall dimensions applied.'); } catch (error) { onStatus(error instanceof Error ? error.message : 'Invalid wall edit.'); } }}>
         <fieldset className="opening-edit-fields" disabled={!!state.gestureLabel}>
         <Field>Name<TextInput aria-label="Wall name" value={name} maxLength={80} required onChange={e => setName(e.target.value)} /></Field>
@@ -41,7 +49,7 @@ export function WallEditor({ wall, level, editing, editor, snapping, onSnapping,
         <FieldMessage>Thickness changes only this wall. Height and base elevation apply to connected walls. Moving a host carries its interior connections along with it.</FieldMessage><FieldGrid columns={'auto'}>{fields.map(key => <Field variant="number" key={key}><span>{labels[key]}</span><FieldControl><NumericInput aria-label={labels[key]} step="any" required value={values[key]} onChange={e => setValues(old => ({ ...old, [key]: e.target.value }))} /><small>m</small></FieldControl></Field>)}</FieldGrid>
         <Field variant="number"><span>Wall length</span><FieldControl><NumericInput aria-label="Wall length" min="0.2" max="200" step="any" value={Number.isFinite(length)?Number(length.toFixed(8)):''} onChange={e=>{const value=Number(e.target.value);if(length>0&&Number.isFinite(value))setDirection(dx*value/length,dz*value/length);}}/><small>m</small></FieldControl></Field>
         <Row className="part-buttons"><button type="button" onClick={()=>setDirection((Math.sign(dx)||Math.sign(dz)||1)*length,0)}>Align X</button><button type="button" onClick={()=>setDirection(0,(Math.sign(dz)||Math.sign(dx)||1)*length)}>Align Z</button></Row>
-        <Field variant="color"><ColorInput aria-label="Wall color" value={color} onChange={e => setColor(e.target.value)} /><span>Wall color</span></Field>
+        <Field variant="color"><ColorInput aria-label="Wall color" disabled={!!wall.materialId} title={wall.materialId?'Color comes from the shared Material section':undefined} value={color} onChange={e => setColor(e.target.value)} /><span>Wall color</span></Field>
         {issue && <FieldMessage tone="error" role="alert">{issue}</FieldMessage>}
         <Button variant="default" className="primary-button" type="submit" disabled={!changed || !!issue}>Apply wall dimensions</Button></fieldset>
       </form></InspectorSection>

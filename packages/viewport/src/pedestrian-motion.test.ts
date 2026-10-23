@@ -112,7 +112,7 @@ describe('people walking on paths', () => {
     expect((saved.entities.find(e => e.id === person.id) as Instance).characterAnimation).toBe('idle');
     editor.undo(); expect((editor.getSnapshot().project.entities.find(e => e.id === person.id) as Instance).characterAnimation).toBeUndefined();
     editor.redo(); expect(groundRoutes(editor.getSnapshot().project).get(person.id)?.reason).toBe('idle');
-    const old = {...p,version:15,entities:p.entities.map(entity=>{if(entity.kind!=='instance')return entity;const {walkingRoute,...legacy}=entity;return legacy;})}; expect(parseProject(old).version).toBe(18); expect(old.version).toBe(15);
+    const old = {...p,version:15,entities:p.entities.map(entity=>{if(entity.kind!=='instance')return entity;const {walkingRoute,...legacy}=entity;return legacy;})}; expect(parseProject(old).version).toBe(31); expect(old.version).toBe(15);
     expect(() => parseProject({...p,entities:[{...person,characterAnimation:'fly'}]})).toThrow();
     const noPath = {...p,entities:[{...person,walkingRoute:undefined}]}; expect(groundRoutes(noPath).get(person.id)?.reason).toBe('no-path');
     const stand = new PedestrianSimulation(saved,groundRoutes(saved)), first = stand.sample(person.id)!; stand.advance(0.1);

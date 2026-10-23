@@ -1,3 +1,6 @@
+import {joineryDraft,joineryValue} from './OpeningJoineryFields';
+import {defaultOpeningJoinery} from '@openlandcraft/core';
+import {ArchitecturalMaterialFields} from './ArchitecturalMaterialFields';
 import { upgradeLibraryFish } from './fish-upgrade';
 import { isBirdAsset, isFishAsset, isGroundCharacterAsset } from '@openlandcraft/core';
 import { DuplicateAbovePanel } from './DuplicateAbovePanel';
@@ -10,9 +13,11 @@ import { ViewportStatusBar } from './ViewportStatusBar';
 import { PathDrawingPanel } from './PathDrawingPanel';
 import { CreationMenu } from './CreationMenu';
 import { ArchitectureTools, type ArchitectureTool } from './ArchitectureTools';
+import {createStairs,DEFAULT_STAIRS,DEFAULT_SPIRAL,createSpiralStairs,spiralStairsForTower,spiralTowerDimensions,type StairShape,type StairDrawingDimensions} from '@openlandcraft/core';
 import { resolveDrawingLevel } from './drawing-level';
 import { useEditorEscape } from './use-editor-escape';
 import { createDrawnSurface, drawingPoint } from '@openlandcraft/core';
+import {conicalRoofForTower,createConicalRoof,isCircularWall,snapRoofDrawingPoint,type RoofShape} from '@openlandcraft/core';
 import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { InspectorPanel } from './InspectorPanel';
@@ -22,6 +27,7 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { AssetsPanel } from './AssetsPanel';
 import { AboutCredits } from './AboutCredits';
 import { usePlantPlacement } from './use-plant-placement';
+import {useStairAttachment} from './StairAttachment';
 import {OutlineEditor} from './OutlineEditor';
 import type {OutlineHandle} from '../../../packages/viewport/src/outline-edit';
 import {WallEditor} from './WallEditor';
@@ -29,7 +35,7 @@ import {OpeningSelectionSummary} from './OpeningSelection';
 import {OpeningEditor} from './OpeningEditor';
 import {openingAtPoint, type OpeningSettings, type WallHit, type Level} from '@openlandcraft/core';
 import {OpeningTools, type OpeningDimensions} from './OpeningTools';
-import {createWallChain,snapWallPoint,type PlanPoint,type Wall} from '@openlandcraft/core';
+import {connectCurvedWall,snapCurveDrawingPoint,createCurvedWall,createWallChain,snapWallPoint,type PlanPoint,type Wall,type WallShape} from '@openlandcraft/core';
 import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, selectionDelete, copySelection, pasteSelection, type EditorClipboard} from '@openlandcraft/core';
 import {FloorTools,ArchitectureGroupInspector} from './FloorTools';
 import {
@@ -166,6 +172,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const [editor] = useState(() => new Editor(createProject()));
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const project = state.preview ?? state.project;
+  const stairAttachment=useStairAttachment(editor);
   const canDive=useMemo(()=>{
     const displayed=layerDisplayProject(evaluateProject(project),state.isolatedLayerId);
     const lakes=displayed.entities.filter(entity=>entity.kind==='lake');
@@ -212,7 +219,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const activeProjection=view==='shore'||view.endsWith('underwater')?'perspective':projection;
   const [frameToken, setFrameToken] = useState(0);
   const [frameCancelToken, setFrameCancelToken] = useState(0);
-  const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0'},window:{width:'1.4',height:'1.2',sill:'0.9'}});
+  const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0',shape:'rectangle',archRise:'.45',joinery:joineryDraft('door',defaultOpeningJoinery('door'))},window:{width:'1.4',height:'1.2',sill:'0.9',shape:'rectangle',archRise:'.6',joinery:joineryDraft('window',defaultOpeningJoinery('window'))}});
   const [openingFocus,setOpeningFocus]=useState<{wallId:string;openingId:string}|null>(null);
   const [openingStatus,setOpeningStatus]=useState('Point at a wall to preview an opening.');
   const [metricsSource]=useState(createViewportMetricsSource);
@@ -230,7 +237,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   );
   const [storageRecovery, setStorageRecovery] = useState(false);
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [tool, setTool] = useState<"select" | "terrain" | "plant" | "building" | "wall" | "floor" | "roof" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
+  const [tool, setTool] = useState<"select" | "terrain" | "plant" | "building" | "wall" | "floor" | "roof" | "stairs" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
     "select",
   );
   const [regionsOpen,setRegionsOpen]=useState(false);
@@ -255,10 +262,16 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const [snapping, setSnapping] = useState(true);
   const plants = usePlantPlacement(editor, tool === 'plant', snapping, setError);
   const [wallDraft,setWallDraft]=useState<PlanPoint[]>([]);
+  const [wallShape,setWallShape]=useState<WallShape>('straight');
+  const [wallHeight,setWallHeight]=useState(3.2);
+  const [wallClockwise,setWallClockwise]=useState(false);
+  const [roofShape,setRoofShape]=useState<RoofShape>('flat'),[roofHeight,setRoofHeight]=useState(4),[roofOverhang,setRoofOverhang]=useState(.5),[roofTowerId,setRoofTowerId]=useState('draw');
+  const [stairDimensions,setStairDimensions]=useState<StairDrawingDimensions>({...DEFAULT_STAIRS,...DEFAULT_SPIRAL});
+  const [stairShape,setStairShape]=useState<StairShape>('straight'),[stairTowerId,setStairTowerId]=useState('draw');
   const [drawingLevelId,setDrawingLevelId]=useState<string | null>(null);
   const [surfaceOffset,setSurfaceOffset]=useState(0);
   const [surfaceThickness,setSurfaceThickness]=useState(0.2);
-  const drawingArchitecture=tool==='wall'||tool==='floor'||tool==='roof';
+  const drawingArchitecture=tool==='wall'||tool==='floor'||tool==='roof'||tool==='stairs';
   const [buildingCorner, setBuildingCorner] = useState<[number, number] | null>(
     null,
   );
@@ -400,6 +413,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     if (tool === 'path' && pathReturnId) editor.select(pathReturnId);
     setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
+    stairAttachment.cancel();
     setOpeningFocus(null);
     setTool('select');
     setDrawingLevelId(null);
@@ -412,12 +426,13 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     setInspectorEpoch((value) => value + 1);
   }, [editor,tool,pathReturnId]);
   useEditorEscape(useCallback(() => {
+    if(stairAttachment.draft){stairAttachment.cancel();return;}
     if(routeCornerIndex!==null||pathCornerIndex!==null){editor.cancel();setRouteCornerIndex(null);setPathCornerIndex(null);return;}
     cancelPreview();
     setShowHelp(false);
     setProjectDialog(null);
     setNotice('');
-  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex]), !opening && !importingModel);
+  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex,stairAttachment.draft]), !opening && !importingModel);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -425,12 +440,12 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const editingOutline=tool==='outline-edit';
   const outlineTarget=(selected?.kind==='slab'||selected?.kind==='roof')&&selected.visible?selected:undefined;
   const [outlineHandle,setOutlineHandle]=useState<OutlineHandle>({mode:'vertex',index:0});
-  const [outlineStatus,setOutlineStatus]=useState('Drag round corners or square edge handles to reshape the outline.');
-  const pickOutline=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus('Drag round corners or square edge handles to reshape the outline.');}};
+  const [outlineStatus,setOutlineStatus]=useState('Drag the object or use its handles; edit precise dimensions in Properties.');
+  const pickOutline=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus(project.entities.some(e=>e.id===id&&e.kind==='roof'&&e.cone)?'Edit roof dimensions below or use the available handles.':'Drag the object or use its handles; edit precise dimensions in Properties.');}};
   const finishOutlineEdit=()=>{editor.cancel();setTool('select');};
   const wallTarget=selected?.kind==='wall'&&selected.visible?selected:undefined;
   const [wallStatus,setWallStatus]=useState('Drag the wall body or its Start / End handles.');
-  const pickWall=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');}};
+  const pickWall=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setTool('wall-edit');setWallStatus(project.entities.some(e=>e.id===id&&e.kind==='wall'&&e.curve)?'Drag Center to move or Radius to resize. Use Properties for precise dimensions.':'Drag the wall body or its Start / End handles.');}};
   const finishWallEdit=()=>{editor.cancel();setTool('select');};
   const focusOpening=(focus:{wallId:string;openingId:string})=>{
     if(!canEditObject(project,focus.wallId,state.isolatedLayerId))return;
@@ -449,10 +464,15 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const placementFloors=project.entities.filter((e):e is Level=>e.kind==='level'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&!project.entities.some(b=>b.kind==='building'&&b.id===e.buildingId&&!b.visible));
   const placementLevel=placementFloors.find(e=>e.id===selectedLevel?.id)??placementFloors[0];
   const drawingLevel=placementFloors.find(e=>e.id===drawingLevelId);
+  const roofTowers=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.visible&&e.parentId===drawingLevel?.id&&isCircularWall(e));
+  const roofTower=roofTowers.find(w=>w.id===roofTowerId);
+  const stairTower=roofTowers.find(w=>w.id===stairTowerId);
   const openingHost=project.entities.find((e):e is Wall=>e.kind==='wall'&&e.visible&&canEditObject(project,e.id,state.isolatedLayerId)&&e.id===openingFocus?.wallId&&e.parentId===placementLevel?.id&&!project.entities.some(unit=>unit.kind==='unit'&&!unit.visible&&unit.memberIds.includes(e.id)));
   const focusedOpening=openingHost?.openings?.find(o=>o.id===openingFocus?.openingId);
   const openingSettings:OpeningSettings={kind:tool==='door'?'door':'window',width:NaN,height:NaN,sill:NaN,snapping};
   const dimensions=openingDimensions[openingSettings.kind];
+  openingSettings.joinery=joineryValue(openingSettings.kind,dimensions.joinery);
+  if(dimensions.shape==='arch'){openingSettings.shape='arch';openingSettings.archRise=dimensions.archRise.trim()===''?NaN:Number(dimensions.archRise);}
   for(const key of ['width','height','sill'] as const)openingSettings[key]=dimensions[key].trim()===''?NaN:Number(dimensions[key]);
   const placeOpening=(wallId:string,point:WallHit)=>{
     let placed=false;
@@ -472,6 +492,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   };
   const chooseTool = (next: typeof tool) => {
     if(drawingArchitecture&&wallDraft.length)setNotice('Unfinished drawing discarded. No geometry was added.');
+    stairAttachment.cancel();
     setCopyDraft(null);setSelectedParts([]);setOpeningFocus(null);
     editor.cancel();
     if (next !== "select" && (view === "shore" || view.endsWith("underwater"))) setView("perspective");
@@ -488,19 +509,37 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       setPanel("inspector");
     }
   };
-  const startArchitecture = (kind: ArchitectureTool, levelId?: string) => {
+  const startArchitecture = (kind: ArchitectureTool, levelId?: string, shape:WallShape='straight') => {
     const level = resolveDrawingLevel(project, state.selectedId, placementFloors, levelId);
     chooseTool(kind);
     setDrawingLevelId(level?.id ?? null);
     if (level) { editor.select(level.id); frame(); }
-    setSurfaceOffset(kind==='roof'?3.4:0);
+    setWallShape(shape);setWallHeight(3.2);setWallClockwise(false);
+    setRoofShape('flat');setRoofHeight(4);setRoofOverhang(.5);setRoofTowerId(selected?.kind==='wall'&&isCircularWall(selected)?selected.id:'draw');
+    setSurfaceOffset(kind==='roof'?3.4:kind==='wall'&&shape!=='straight'?0.2:0);
     setSurfaceThickness(kind==='wall'?0.25:0.2);
+    if(kind==='stairs'){
+      const rise=selected?.kind==='wall'&&selected.walk?selected.height-selected.walk.parapetHeight:level?.storeyHeight??DEFAULT_STAIRS.rise;
+      setStairShape('straight');setStairTowerId(selected?.kind==='wall'&&isCircularWall(selected)?selected.id:'draw');
+      setStairDimensions({...DEFAULT_STAIRS,...DEFAULT_SPIRAL,rise,run:Math.min(40,Math.max(5.6,rise*1.7)),steps:Math.min(128,Math.ceil(rise/.2))});
+      setSurfaceOffset(selected?.kind==='wall'&&selected.walk?selected.elevation:selected?.kind==='slab'&&!selected.stairs?selected.elevation+selected.thickness:0);
+    }
     setView('top');setPanel('inspector');
   };
   const chooseDrawingLevel = (id: string) => {
     if(wallDraft.length)return;
     setDrawingLevelId(id);editor.select(id);frame();
   };
+  const fitConicalRoof=()=>guard(()=>{
+    const wall=editor.getSnapshot().project.entities.find((e):e is Wall=>e.kind==='wall'&&e.id===roofTowerId&&e.parentId===drawingLevel?.id&&e.visible);
+    if(!wall||roofShape!=='conical'||tool!=='roof')throw new Error('Choose a circular tower on the drawing level.');
+    const roof=conicalRoofForTower(wall,roofHeight,roofOverhang);editor.execute({type:'add',entity:roof},'Fit conical roof to tower');chooseTool('select');select(roof.id);setView('perspective');frame();setNotice('Conical roof placed. Double-click to edit radius, height and overhang.');
+  });
+  const fitSpiralStairs=()=>guard(()=>{
+    if(!stairTower||stairShape!=='spiral'||tool!=='stairs')throw new Error('Choose a circular tower on this level.');
+    const stairs=spiralStairsForTower(stairTower,stairDimensions);editor.execute({type:'add',entity:stairs},'Fit spiral stairs inside tower');chooseTool('select');select(stairs.id);setView('perspective');frame();setNotice('Spiral stairs fitted inside the tower. Double-click to edit dimensions and railings.');
+  });
+  const chooseStairTower=(id:string)=>{setStairTowerId(id);setWallDraft([]);const tower=roofTowers.find(w=>w.id===id);if(tower){setStairDimensions(old=>({...old,...spiralTowerDimensions(tower)}));setSurfaceOffset(tower.elevation);}};
   const addDrawingLevel = () => guard(() => {
     if(wallDraft.length)return;
     const level:Level={id:crypto.randomUUID(),kind:'level',parentId:'site',name:`Level ${project.entities.filter(e=>e.kind==='level').length+1}`,position:[0,0,0],rotation:0,visible:true,storeyHeight:3.4};
@@ -610,6 +649,25 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     if(drawingArchitecture){
       if(!drawingLevel)return;
       const point=drawingPoint(drawingLevel,x,z);
+      if(tool==='stairs'){
+        if(stairShape==='spiral'&&stairTower)return;
+        guard(()=>{if(!wallDraft.length){setWallDraft([snapping?point.map(v=>Math.round(v*4)/4) as PlanPoint:point]);return;}const stairs=stairShape==='spiral'?createSpiralStairs(drawingLevel.id,wallDraft[0],point,stairDimensions,surfaceOffset,snapping):createStairs(drawingLevel.id,wallDraft[0],point,stairDimensions,surfaceOffset,snapping);editor.execute({type:'add',entity:stairs},'Draw '+stairShape+' stairs');setWallDraft([]);setNotice('Stairs created. Draw another flight, or exit the tool and double-click to edit.');});return;
+      }
+      if(tool==='roof'&&roofShape==='conical'){
+        if(roofTower)return;
+        guard(()=>{const points=[...wallDraft,snapRoofDrawingPoint(point,wallDraft,snapping)];if(points.length<2){setWallDraft(points);return;}const roof=createConicalRoof(drawingLevel.id,points,roofHeight,roofOverhang,surfaceOffset);editor.execute({type:'add',entity:roof},'Draw conical roof');setWallDraft([]);setNotice('Conical roof created. Draw another, or exit the Roof tool to edit it.');});return;
+      }
+      if(tool==='wall'&&wallShape!=='straight'){
+        guard(()=>{
+          const walls=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.parentId===drawingLevel.id&&!!e.joins);
+          const next=snapCurveDrawingPoint(point,wallDraft,walls,snapping);
+          const points=[...wallDraft,next];
+          if(points.length<(wallShape==='circle'?2:3)){setWallDraft(points);return;}
+          const wall=connectCurvedWall(project,createCurvedWall(drawingLevel.id,wallShape,points,surfaceThickness,wallHeight,wallClockwise,surfaceOffset));
+          editor.execute({type:'add',entity:wall},`Draw ${wallShape} wall`);setWallDraft([]);
+          setNotice(`${wall.name} created. Click another center to draw again, or exit the tool to edit it.`);
+        });return;
+      }
       const walls=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.parentId===drawingLevel.id&&e.joins===true);
       const next=snapping?snapWallPoint(point,walls,wallDraft.at(-1)):point;
       if(wallDraft.length>=3&&Math.hypot(next[0]-wallDraft[0][0],next[1]-wallDraft[0][1])<0.2){finishArchitecture(true);return;}
@@ -699,8 +757,9 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   };
   const finishArchitecture=(closed:boolean)=>guard(()=>{
     if(!drawingLevel||!drawingArchitecture)return;
+    if(tool==='stairs'||tool==='roof'&&roofShape==='conical')return;
     const entities=tool==='wall'
-      ? createWallChain(editor.getSnapshot().project,drawingLevel.id,wallDraft,closed,crypto.randomUUID(),false,surfaceThickness)
+      ? wallShape==='straight'?createWallChain(editor.getSnapshot().project,drawingLevel.id,wallDraft,closed,crypto.randomUUID(),false,surfaceThickness):[connectCurvedWall(editor.getSnapshot().project,createCurvedWall(drawingLevel.id,wallShape,wallDraft,surfaceThickness,wallHeight,wallClockwise,surfaceOffset))]
       : [createDrawnSurface(tool,drawingLevel,wallDraft,surfaceOffset,surfaceThickness)];
     editor.execute({type:'insert',entities},`Draw ${tool}`);
     setWallDraft([]);setNotice(`${tool==='wall'?'Wall chain':tool==='floor'?'Floor':'Flat roof'} created. Click to draw another, or exit the tool to edit it.`);
@@ -818,8 +877,8 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       }
       const editKey = event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.repeat;
       if(editKey&&tool==='select'&&focusedOpening&&openingFocus){event.preventDefault();setTool('opening-edit');setOpeningStatus('Drag the tinted opening to move; use the square handles to resize.');return;}
-      if(editKey&&tool==='select'&&wallTarget&&!focusedOpening&&!selectedParts.length){event.preventDefault();setTool('wall-edit');setWallStatus('Drag the wall body or its Start / End handles.');return;}
-      if(editKey&&tool==='select'&&outlineTarget&&!selectedParts.length){event.preventDefault();setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus('Drag round corners or square edge handles to reshape the outline.');return;}
+      if(editKey&&tool==='select'&&wallTarget&&!focusedOpening&&!selectedParts.length){event.preventDefault();setTool('wall-edit');setWallStatus(wallTarget.curve?'Drag Center to move or Radius to resize. Use Properties for precise dimensions.':'Drag the wall body or its Start / End handles.');return;}
+      if(editKey&&tool==='select'&&outlineTarget&&!selectedParts.length){event.preventDefault();setOutlineHandle({mode:'vertex',index:0});setTool('outline-edit');setOutlineStatus(outlineTarget.kind==='roof'&&outlineTarget.cone?'Edit roof dimensions below or use the available handles.':'Drag the object or use its handles; edit precise dimensions in Properties.');return;}
       if (shortcut && key === "z") {
         event.preventDefault();
         event.shiftKey ? editor.redo() : editor.undo();
@@ -1108,7 +1167,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
             <CreationMenu project={project} busy={!!state.gestureLabel}
               onAddBlock={addBlock} onAddBuilding={()=>addBuilding()}
               onDrawBuilding={()=>{chooseTool('building');setView('top');}}
-              onDrawArchitecture={kind=>startArchitecture(kind)}
+              onDrawArchitecture={(kind,shape)=>startArchitecture(kind,undefined,shape)}
               onRegions={()=>openRegions()} onWater={()=>openWaterSystem()}
               onDrawPath={()=>startPathDrawing()}
               onAddOcean={addOcean}
@@ -1146,9 +1205,10 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               onCopyStatus={setNotice}
               onCopyPlaced={result=>{select(result.selectedIds[0]);if(result.focus)setOpeningFocus(result.focus);else if(result.selectedIds.length>1)setSelectedParts(result.selectedIds);}}
               selectedIds={selectedParts}
-              isolateLevelId={drawingArchitecture?drawingLevel?.id:placingOpening||editingOpening||editingWall||editingOutline?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
+              isolateLevelId={tool==='stairs'||editingOutline&&outlineTarget?.kind==='slab'&&outlineTarget.stairs?null:drawingArchitecture?drawingLevel?.id:placingOpening||editingOpening||editingWall||editingOutline?placementLevel?.id:isolateFloor&&!copyDraft?selectedLevel?.id:null}
               onOutlinePick={pickOutline}
-              outlineEditing={editingOutline&&outlineTarget&&selectedLevel?{part:outlineTarget,level:selectedLevel,handle:outlineHandle,onHandle:setOutlineHandle,onStatus:setOutlineStatus}:undefined}
+              stairAttachment={stairAttachment.draft?{end:stairAttachment.draft.end,surface:stairAttachment.draft.surface,stairId:stairAttachment.draft.id,ready:stairAttachment.draft.ready,onPick:stairAttachment.pick}:undefined}
+              outlineEditing={!stairAttachment.draft&&editingOutline&&outlineTarget&&selectedLevel?{part:outlineTarget,level:selectedLevel,handle:outlineHandle,onHandle:setOutlineHandle,onStatus:setOutlineStatus}:undefined}
               onWallPick={pickWall}
               wallEditing={editingWall&&wallTarget&&selectedLevel?{wall:wallTarget,level:selectedLevel,onStatus:setWallStatus}:undefined}
               openingSelection={tool==='select'||editingWall?{focus:focusedOpening?openingFocus:null,onPick:pickOpening}:undefined}
@@ -1176,7 +1236,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               onStrokeTime={reportStroke}
               onGroundPoint={groundPoint}
               wallDraft={wallDraft}
-              architectureDrawing={drawingArchitecture&&drawingLevel?{level:drawingLevel,kind:tool,offset:tool==='wall'?0:surfaceOffset,thickness:surfaceThickness}:undefined}
+              architectureDrawing={drawingArchitecture&&drawingLevel?{level:drawingLevel,kind:tool,offset:tool==='wall'&&wallShape==='straight'?0:surfaceOffset,thickness:surfaceThickness,wallShape,height:wallHeight,clockwise:wallClockwise,roofShape,roofHeight,roofOverhang,tower:roofTower,stairDimensions,stairShape,stairTower}:undefined}
               onError={setError}
               transformMode={transformMode}
               snapping={snapping}
@@ -1233,7 +1293,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
                 <Grid2X2 size={18} />
               </IconButton>
             </div>
-            {drawingArchitecture&&<div className="building-hud river-hud" role="status"><span>{tool==='wall'?'Wall':tool==='floor'?'Floor':'Roof'} · {drawingLevel?`${drawingLevel.name} · ${wallDraft.length} corners`:'Choose a drawing level in Properties'}</span><button disabled={!drawingLevel||wallDraft.length<(tool==='wall'?2:3)} onClick={()=>finishArchitecture(tool!=='wall')}>Finish {tool}</button><button onClick={()=>chooseTool('select')}>Exit tool</button></div>}
+            {drawingArchitecture&&<div className="building-hud river-hud" role="status"><span>{tool==='wall'?(wallShape==='straight'?'Wall':wallShape==='arc'?'Arc wall':'Circular wall'):tool==='floor'?'Floor':tool==='stairs'?'Stairs':'Roof'} · {drawingLevel?`${drawingLevel.name} · ${wallDraft.length} ${(tool==='stairs'||tool==='wall'&&wallShape!=='straight'||tool==='roof'&&roofShape==='conical')?'points':'corners'}`:'Choose a drawing level in Properties'}</span>{!(tool==='stairs'||tool==='wall'&&wallShape!=='straight'||tool==='roof'&&roofShape==='conical')&&<button disabled={!drawingLevel||wallDraft.length<(tool==='wall'?2:3)} onClick={()=>finishArchitecture(tool!=='wall')}>Finish {tool}</button>}<button onClick={()=>chooseTool('select')}>Exit tool</button></div>}
             {tool === "building" && (
               <div className="building-hud" role="status">
                 <Layers size={15} />
@@ -1302,7 +1362,8 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
           scope={tool === 'path' ? 'draw-path' : drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
           {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
-          {tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!focusedOpening&&!stairAttachment.draft&&['select','wall-edit','outline-edit'].includes(tool)&&<ArchitecturalMaterialFields key={'material-'+(selectedParts.length?selectedParts:[state.selectedId]).join('|')} project={project} editor={editor} ids={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]}/>}
+          {stairAttachment.panel??(tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools stairShape={stairShape} onStairShape={shape=>{setStairShape(shape);setWallDraft([]);if(shape==='spiral'&&stairTower)setStairDimensions(old=>({...old,...spiralTowerDimensions(stairTower)}));}} stairTowerId={stairTower?.id??'draw'} onStairTower={chooseStairTower} onFitStairTower={fitSpiralStairs} stairDimensions={stairDimensions} onStairDimensions={setStairDimensions} roofShape={roofShape} roofHeight={roofHeight} roofOverhang={roofOverhang} roofTowerId={roofTower?.id??'draw'} roofTowers={roofTowers} onRoofShape={shape=>{setRoofShape(shape);setWallDraft([]);}} onRoofHeight={setRoofHeight} onRoofOverhang={setRoofOverhang} onRoofTower={setRoofTowerId} onFitTower={fitConicalRoof} wallShape={wallShape} wallHeight={wallHeight} clockwise={wallClockwise} onWallShape={shape=>{setWallShape(shape);setWallDraft([]);setSurfaceOffset(shape==='straight'?0:0.2);}} onWallHeight={setWallHeight} onClockwise={setWallClockwise} kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor onAttachStair={end=>{setTool('outline-edit');setPanel('inspector');stairAttachment.start(outlineTarget.id,end);}} key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools project={project} kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
             <PanelBody className="terrain-inspector">
               <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
               <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
@@ -1773,7 +1834,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
                 properties.
               </p>
             </div>
-          )}
+          ))}
         </InspectorPanel>
       </div>
       <nav className="mobile-panels" aria-label="Editor panels">

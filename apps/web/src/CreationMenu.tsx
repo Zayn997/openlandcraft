@@ -1,5 +1,5 @@
 import { Box, Droplets, Focus, Layers, Leaf, MousePointer2, Plus, Route, Trash2, Waves } from 'lucide-react';
-import type { Project } from '@openlandcraft/core';
+import type { Project, WallShape } from '@openlandcraft/core';
 import {
   Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
@@ -13,7 +13,7 @@ type Props = {
   onAddBlock: () => void;
   onAddBuilding: () => void;
   onDrawBuilding: () => void;
-  onDrawArchitecture: (kind: 'wall' | 'floor' | 'roof') => void;
+  onDrawArchitecture: (kind: 'wall' | 'floor' | 'roof' | 'stairs', shape?:WallShape) => void;
   onRegions: () => void;
   onWater: () => void;
   onDrawPath: () => void;
@@ -39,6 +39,7 @@ export function CreationMenu({
         <DropdownMenuItem onSelect={() => onDrawArchitecture('wall')}><MousePointer2 />Wall</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><Layers />Floor</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><Focus />Roof</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('stairs')}><Layers />Stairs</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBlock}><Box />Add massing block</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBuilding}><Layers />Add building</DropdownMenuItem>
         <DropdownMenuItem onSelect={onDrawBuilding}><Focus />Draw footprint</DropdownMenuItem>

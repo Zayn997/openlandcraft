@@ -9,12 +9,12 @@ describe('Persistent modeling layers',()=>{
   it('migrates v13 without altering authored data and rejects malformed layer graphs',()=>{
     const {layers,objectLayers,activeLayerId,...base}=createProject(),legacy={...base,version:13};
     const before=structuredClone(legacy),p=parseProject(legacy);
-    expect(p).toEqual({...legacy,version:18,layers:defaultLayers(),objectLayers:{},activeLayerId:'default'});expect(legacy).toEqual(before);
+    expect(p).toEqual({...legacy,version:31,layers:defaultLayers(),objectLayers:{},activeLayerId:'default'});expect(legacy).toEqual(before);
     expect(()=>parseProject({...p,layers:[...p.layers,layer('a','b'),layer('b','a')]})).toThrow(/cycles/);
     expect(()=>parseProject({...p,layers:[...p.layers,layer('a'),{...layer('b'),name:'a'}]})).toThrow(/unique layer names/);
     expect(()=>parseProject({...p,objectLayers:{missing:'default'}})).toThrow(/assignments/);
     expect(()=>parseProject({...p,objectLayers:{terrain:'missing'}})).toThrow(/assignments/);
-    expect(()=>parseProject({...p,version:19})).toThrow();
+    expect(()=>parseProject({...p,version:32})).toThrow();
   });
   it('creates into the active layer and preserves assignments through history and local/file storage',async()=>{
     const editor=setup();editor.execute({type:'activeLayer',id:'Walls'},'Active');
