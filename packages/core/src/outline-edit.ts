@@ -2,10 +2,12 @@ import { footprint, outlineIssue, type PlanPoint } from './architecture';
 import { slabSchema, roofSchema, type Slab, type Roof } from './model';
 import {conicalRoofIssue,dragConicalRoof} from './conical-roofs';
 import {dragStairs} from './stairs';
+import {circularFloorIssue,dragCircularFloor} from './circular-floors';
 export type OutlinePart = Slab | Roof;
 export type OutlineDragMode = 'move' | 'vertex' | 'edge' | 'radius' | 'height' | 'overhang' | 'run' | 'width';
 const round = (n: number) => Number(n.toFixed(10));
 function checked<T extends OutlinePart>(part: T): T {
+  if(part.kind==='slab'&&part.disk){const issue=circularFloorIssue(part);if(issue)throw new Error(issue);if(!slabSchema.safeParse(part).success)throw new Error('Keep circular floor dimensions within their supported limits.');return part;}
   if (!(part.kind === 'slab' ? slabSchema : roofSchema).safeParse(part).success) throw new Error('Keep dimensions and outline coordinates within their supported limits.');
   if(part.kind==='roof'&&part.cone){const issue=conicalRoofIssue(part);if(issue)throw new Error(issue);return part;}
   const issue = outlineIssue(footprint(part)); if (issue) throw new Error(issue);
@@ -13,6 +15,7 @@ function checked<T extends OutlinePart>(part: T): T {
 }
 function indexOf(points: PlanPoint[], index: number) { if (!Number.isInteger(index) || index < 0 || index >= points.length) throw new Error('Select an existing corner or edge.'); }
 export function withOutline(part: OutlinePart, points: PlanPoint[]): OutlinePart {
+  if(part.kind==='slab'&&part.disk)throw new Error('Use radius to edit a circular floor.');
   if(part.kind==='slab'&&part.stairs)throw new Error('Use width, total rise and total run to edit straight stairs.');
   if(part.kind==='roof'&&part.cone)throw new Error('Use radius, height and overhang to edit a conical roof.');
   if (part.kind === 'roof' && !part.outline) throw new Error('Convert the gable to a flat outline before adding custom corners.');
@@ -21,6 +24,7 @@ export function withOutline(part: OutlinePart, points: PlanPoint[]): OutlinePart
 /** All deltas are in level coordinates from the original grab. */
 export function dragOutline(part: OutlinePart, mode: OutlineDragMode, index: number, delta: PlanPoint, snapping: boolean): OutlinePart {
   if (!delta.every(Number.isFinite)) throw new Error('Keep the pointer on the outline editing plane.');
+  if(part.kind==='slab'&&part.disk){if(mode!=='move'&&mode!=='radius')throw new Error('Use Center or Radius to edit a circular floor.');return checked(dragCircularFloor(part,mode,delta,snapping));}
   if(part.kind==='slab'&&part.stairs){if(mode==='vertex'||mode==='edge'||mode==='overhang')throw new Error('Use the stair dimension handles.');return dragStairs(part,mode,delta,snapping);}
   if(part.kind==='roof'&&part.cone){if(mode==='vertex'||mode==='edge'||mode==='run'||mode==='width')throw new Error('Use the conical roof radius or overhang handle.');return dragConicalRoof(part,mode,delta,snapping);}
   if(mode==='run'||mode==='width')throw new Error('Choose straight stairs to use this handle.');

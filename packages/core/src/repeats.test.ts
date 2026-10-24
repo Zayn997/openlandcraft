@@ -64,7 +64,7 @@ describe('editable repeat rules',()=>{
   const p=scene(),editor=new Editor(p);editor.begin('Repeat');editor.preview({type:'repeat',pattern:rule({count:7})});expect(editor.getSnapshot().preview!.entities).toHaveLength(8);editor.cancel();expect(editor.getSnapshot().project).toEqual(p);
   editor.execute({type:'repeat',pattern:rule({name:'New rule name'})},'Rename repeat');expect(editor.getSnapshot().past).toHaveLength(1);editor.undo();expect(editor.getSnapshot().project).toEqual(p);editor.redo();expect(editor.getSnapshot().project.repeatPatterns![0].name).toBe('New rule name');
   const saved=editor.getSnapshot().project;expect(deserializeProject(serializeProject(saved))).toEqual(saved);await saveLocal(saved);expect(await loadLocal()).toEqual(saved);
-  const legacy={...base(),version:31};expect(parseProject(legacy).version).toBe(32);expect(legacy.version).toBe(31);expect(()=>parseProject({...p,version:31})).toThrow();expect(()=>parseProject({...p,version:33})).toThrow();
+  const legacy={...base(),version:31};expect(parseProject(legacy).version).toBe(33);expect(legacy.version).toBe(31);expect(()=>parseProject({...p,version:31})).toThrow();expect(()=>parseProject({...p,version:34})).toThrow();
  });
  it('copies individual members as independent objects without changing the original rule',()=>{
   const p=scene(),result=pasteSelection(p,copySelection(p,'row:0'),'site','copied'),next=applyCommand(p,result.command);expect(next.repeatPatterns).toEqual(p.repeatPatterns);expect(repeatOwner(next,result.selectedIds[0])).toBeUndefined();expect(next.entities).toHaveLength(7);

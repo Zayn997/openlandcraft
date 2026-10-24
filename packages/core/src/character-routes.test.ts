@@ -29,7 +29,7 @@ describe('independent character routes',()=>{
   it('upgrades format 17 without changing independent routes and rejects malformed corner settings',()=>{
     const {project,a,b}=scene(),points:[number,number][]=[[-18,-8],[0,-8],[0,12]];
     const person=createCharacterRoute(project,a.id,points,3),legacy={...project,version:17,entities:[person,b]},before=structuredClone(legacy);
-    const upgraded=parseProject(legacy);expect(upgraded.version).toBe(32);expect(upgraded.entities).toEqual(legacy.entities);expect(legacy).toEqual(before);
+    const upgraded=parseProject(legacy);expect(upgraded.version).toBe(33);expect(upgraded.entities).toEqual(legacy.entities);expect(legacy).toEqual(before);
     for(const rounding of [[0,1],[1,0,0],[0,0,1],[0,1.1,0],[0,-.1,0]])expect(()=>createCharacterRoute(project,a.id,points,3,rounding)).toThrow();
   });
   it('draws only for the selected person, preserving the other person and landscape path through save, undo and redo',()=>{
@@ -41,7 +41,7 @@ describe('independent character routes',()=>{
     const second=createCharacterRoute(editor.getSnapshot().project,b.id,[[-20,8],[0,8],[17,15]],2.5);
     editor.execute({type:'replace',entity:second},'Draw rust route');
     const saved=deserializeProject(serializeProject(editor.getSnapshot().project));
-    expect(saved.version).toBe(32);expect(saved.entities.find(e=>e.id===a.id)).toEqual(first);expect(saved.entities.find(e=>e.id===b.id)).toEqual(second);
+    expect(saved.version).toBe(33);expect(saved.entities.find(e=>e.id===a.id)).toEqual(first);expect(saved.entities.find(e=>e.id===b.id)).toEqual(second);
     expect(saved.entities.find(e=>e.id===landscape.id)).toEqual(landscape);
     expect(characterWalkingPath(first)?.id).not.toBe(characterWalkingPath(second)?.id);
     editor.undo();expect(editor.getSnapshot().project.entities.find(e=>e.id===a.id)).toEqual(first);expect(editor.getSnapshot().project.entities.find(e=>e.id===b.id)).toEqual(b);
@@ -66,7 +66,7 @@ describe('independent character routes',()=>{
     expect(migrated.entities.find(e=>e.id===landscape.id)).toEqual(landscape);
     const changed=createCharacterRoute(migrated,a.id,[[-20,-8],[15,-8]],3);
     expect(changed.walkingRoute).not.toEqual(rust.walkingRoute);expect(parseProject(migrated)).toEqual(migrated);
-    expect(()=>parseProject({...migrated,version:33})).toThrow();
+    expect(()=>parseProject({...migrated,version:34})).toThrow();
   });
   it('rejects invalid routes and unsupported owners before changing history',()=>{
     const {project,a}=scene(),horse=createPlacedInstance(project,assets[2],0,0,false,'horse');project.entities.push(horse);

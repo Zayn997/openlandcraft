@@ -42,6 +42,6 @@ describe('hosted wall walks and parapets',()=>{
     const ringBlocked=plantingObstacle(scene(tower()),{clearance:0,exclusions:{water:false,paths:false,buildings:true}});expect(ringBlocked(4,0)).toBe(true);expect(ringBlocked(0,0)).toBe(false);
   });
   it('migrates format 23 without adding walks and retains walks in local and portable saving',async()=>{
-    const w=tower(),p=scene(w),{walk,...oldWall}=w,old={...p,version:23,entities:[level,oldWall]},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(32);expect(parseProject(old).entities).toEqual([level,oldWall]);expect(old).toEqual(snapshot);expect(()=>parseProject({...old,entities:[level,w]})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);
+    const w=tower(),p=scene(w),{walk,...oldWall}=w,old={...p,version:23,entities:[level,oldWall]},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(33);expect(parseProject(old).entities).toEqual([level,oldWall]);expect(old).toEqual(snapshot);expect(()=>parseProject({...old,entities:[level,w]})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);
   });
 });

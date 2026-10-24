@@ -50,6 +50,6 @@ describe('editable stair-to-floor attachments',()=>{
  it('remaps complete copies, detaches standalone copies, and retains local/portable data through format 28 migration',async()=>{
   const p=linked(),copy=applyCommand(p,pasteSelection(p,copySelection(p,'level'),null,'copy').command),copied=copy.entities.find((e):e is Slab=>e.kind==='slab'&&!!e.stairs&&e.id!=='stairs')!;expect(copied.stairs!.connections!.top!.floorId).not.toBe('upper');expect(copied.stairs!.connections!.bottom!.floorId).not.toBe('lower');expect(parseProject(copy)).toEqual(copy);
   const alone=applyCommand(p,pasteSelection(p,copySelection(p,'stairs'),'level','one').command),single=alone.entities.find((e):e is Slab=>e.kind==='slab'&&!!e.stairs&&e.id!=='stairs')!;expect(single.stairs!.connections).toBeUndefined();const above=duplicateAbove(p,'level',12,'above').project;expect(parseProject(above)).toEqual(above);
-  const old={...scene(floor(),flight()),version:28},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(32);expect(old).toEqual(snapshot);expect(()=>parseProject({...p,version:28})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);
+  const old={...scene(floor(),flight()),version:28},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(33);expect(old).toEqual(snapshot);expect(()=>parseProject({...p,version:28})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);
  });
 });

@@ -10,7 +10,7 @@ import { deserializeProject, loadLocal, saveLocal, serializeProject } from '@ope
 
 describe('ocean foundation and version 10 persistence', () => {
   it('migrates version 5 settings to explicit bounded shore controls without changing source data', () => {
-    const current = parseProject(v5); expect(current.version).toBe(32);
+    const current = parseProject(v5); expect(current.version).toBe(33);
     expect(current.site).toEqual({ ...v5.site, materials: TERRAIN_MATERIAL_DEFAULTS }); expect(current.assets).toEqual(v5.assets);
     expect(current.entities).toEqual(v5.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity.kind === 'river' ? { ...entity, appearance: WATER_APPEARANCE_DEFAULTS, water: RIVER_WATER_DEFAULTS } : entity));
     const water = current.entities.find((entity): entity is Ocean => entity.kind === 'ocean')!;
@@ -19,7 +19,7 @@ describe('ocean foundation and version 10 persistence', () => {
   });
   it('migrates version 4 water explicitly while preserving ground, river, buildings, and GLB bytes', () => {
     const original = structuredClone(v4), current = parseProject(v4);
-    expect(current.version).toBe(32); expect(v4).toEqual(original);
+    expect(current.version).toBe(33); expect(v4).toEqual(original);
     expect(current.site).toEqual({ ...v4.site, materials: TERRAIN_MATERIAL_DEFAULTS }); expect(current.assets).toEqual(v4.assets);
     expect(current.entities).toEqual(v4.entities.map((entity) => entity.kind === 'ocean' ? { ...entity, direction: OCEAN_DEFAULTS.direction, wavelength: OCEAN_DEFAULTS.wavelength, ...COAST_DEFAULTS, appearance: WATER_APPEARANCE_DEFAULTS } : entity.kind === 'river' ? { ...entity, appearance: WATER_APPEARANCE_DEFAULTS, water: RIVER_WATER_DEFAULTS } : entity));
     const noOcean = { ...v4, entities: v4.entities.filter((entity) => entity.kind !== 'ocean') };

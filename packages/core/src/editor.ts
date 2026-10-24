@@ -8,6 +8,7 @@ const stairStartDelta=(a:import('./model').Slab,b:import('./model').Slab)=>{cons
 import {resolveStairConnections} from './stair-connections';
 import {architecturalMaterials,architecturalMaterialUsers,architecturalMaterialSchema,type ArchitecturalMaterial} from './architectural-materials';
 import { parseProject, type Entity, type Project } from './model';
+import {captureTowerEdit,regenerateTowers,towerAssemblySchema,towerTypeSchema,towerOwner,towerPart,type TowerAssembly,type TowerType} from './towers';
 import {overrideRepeatMember,regenerateRepeats,repeatMemberId,repeatOwner,repeatPatternSchema,repeatSources,type RepeatPattern} from './repeats';
 import {detachedInstance,plantingInstanceChanged,regeneratePlanting} from './regions';
 import type {PlantingRegion} from './model';
@@ -16,6 +17,11 @@ import type { TerrainMaterials } from './materials';
 import { diffHeights, restoreHeights, terrainSchema, type Heightfield, type HeightPatch } from '@openlandcraft/landscape';
 
 export type Command =
+  | {type:'towerType';definition:TowerType}
+  | {type:'tower';tower:TowerAssembly;level?:import('./model').Level}
+  | {type:'detachTower';id:string}
+  | {type:'detachTowerPart';id:string}
+  | {type:'resetTowerPart';id:string}
   | {type:'repeat';pattern:RepeatPattern}
   | {type:'removeRepeat';id:string;deleteObjects?:boolean}
   | {type:'detachRepeatMember';id:string}
@@ -32,7 +38,7 @@ export type Command =
   | { type: 'batch'; commands: Command[] }
   | { type: 'replace'; entity: Entity }
   | { type: 'add'; entity: Entity }
-  | { type: 'insert'; entities: Entity[]; assets?: Asset[]; objectLayers?: Record<string,string> }
+  | { type: 'insert'; entities: Entity[]; assets?: Asset[]; objectLayers?: Record<string,string>;towerTypes?:TowerType[];towerAssemblies?:TowerAssembly[] }
   | { type: 'asset'; asset: Asset }
   | { type: 'removeAsset'; id: string }
   | { type: 'remove'; id: string }
@@ -71,6 +77,31 @@ export function applyCommand(project: Project, command: Command): Project {
   }
   let candidate: Project;
   switch (command.type) {
+    case 'towerType': {
+      const definition=towerTypeSchema.parse(command.definition);
+      for(const tower of project.towerAssemblies??[])if(tower.typeId===definition.id)for(const e of project.entities)if(e.id===tower.levelId||e.parentId===tower.levelId)if(!canEditObject(project,e.id))throw new Error('Unlock and show every linked tower before changing its shared type.');
+      candidate={...project,towerTypes:project.towerTypes?.some(t=>t.id===definition.id)?project.towerTypes.map(t=>t.id===definition.id?definition:t):[...(project.towerTypes??[]),definition]};break;
+    }
+    case 'tower': {
+      const tower=towerAssemblySchema.parse(command.tower),old=project.towerAssemblies?.find(t=>t.id===tower.id);
+      if(old&&(old.levelId!==tower.levelId||JSON.stringify(old.parts)!==JSON.stringify(tower.parts)))throw new Error('Keep tower component identities when editing an assembly.');
+      if(old&&project.entities.some(e=>(e.id===old.levelId||e.parentId===old.levelId)&&!canEditObject(project,e.id)))throw new Error('Unlock and show the tower components first.');
+      if(!old&&project.entities.some(e=>e.id===tower.levelId||Object.values(tower.parts).includes(e.id)))throw new Error('Tower component IDs already exist.');
+      candidate={...project,towerAssemblies:old?project.towerAssemblies!.map(t=>t.id===tower.id?tower:t):[...(project.towerAssemblies??[]),tower],entities:command.level?[...project.entities,command.level]:project.entities};break;
+    }
+    case 'detachTower': {
+      const tower=project.towerAssemblies?.find(t=>t.id===command.id);if(!tower)throw new Error('Choose an existing tower assembly.');
+      if(project.entities.some(e=>(e.id===tower.levelId||e.parentId===tower.levelId)&&!canEditObject(project,e.id)))throw new Error('Unlock and show the tower first.');
+      candidate={...project,towerAssemblies:project.towerAssemblies!.filter(t=>t.id!==tower.id)};break;
+    }
+    case 'detachTowerPart':
+    case 'resetTowerPart': {
+      const tower=towerOwner(project,command.id),part=tower&&towerPart(tower,command.id);if(!tower||!part)throw new Error('Select a tower component.');
+      if(!canEditObject(project,command.id))throw new Error('Unlock and show the tower component first.');
+      if(command.type==='detachTowerPart'&&part==='wall')throw new Error('Keep the wall as tower support, or make the whole tower independent.');
+      const overrides={...tower.overrides};delete overrides[part];
+      candidate={...project,towerAssemblies:project.towerAssemblies!.map(t=>t.id===tower.id?{...t,overrides,...(command.type==='detachTowerPart'?{edited:t.edited?.filter(k=>k!==part),detached:[...(t.detached??[]),part]}:{})}:t),entities:project.entities.map(e=>command.type==='detachTowerPart'&&part==='roof'&&e.id===command.id&&e.kind==='roof'?{...e,cone:{...e.cone!,wallId:undefined}}:e)};break;
+    }
     case 'repeat': {
       const pattern=repeatPatternSchema.parse(command.pattern),old=project.repeatPatterns?.find(p=>p.id===pattern.id);
       if(old&&old.sourceId!==pattern.sourceId)throw new Error('Keep the existing source; edit it or create a new repeat.');
@@ -151,6 +182,7 @@ export function applyCommand(project: Project, command: Command): Project {
       if(current.kind==='plantingRegion'&&replacement.kind==='plantingRegion'&&(Object.keys(current) as (keyof PlantingRegion)[]).some(key=>key!=='name'&&key!=='visible'&&JSON.stringify(current[key])!==JSON.stringify((replacement as PlantingRegion)[key])))throw new Error('Preview regeneration to change planting region settings.');
       candidate = { ...project, entities: current.kind==='wall'&&replacement.kind==='wall'?replaceJoinedWall(project.entities,current,replacement):project.entities.map((e) => e.id === command.entity.id ? replacement : e) };
       if((current.kind==='block'||current.kind==='instance')&&(replacement.kind==='block'||replacement.kind==='instance'))candidate=overrideRepeatMember(candidate,current,replacement);
+      candidate=captureTowerEdit(candidate,current,replacement);
       break;
     }
     case 'add': candidate = { ...project, entities: [...project.entities, command.entity] }; break;
@@ -159,7 +191,7 @@ export function applyCommand(project: Project, command: Command): Project {
       if(current&&current.kind!=='plantingRegion')throw new Error('An object cannot change its kind.');
       candidate=regeneratePlanting(project,command.region);break;
     }
-    case 'insert': candidate = { ...project, entities: [...project.entities, ...command.entities], assets: [...project.assets, ...(command.assets ?? [])], objectLayers:{...project.objectLayers,...command.objectLayers} }; break;
+    case 'insert': candidate = { ...project, entities: [...project.entities, ...command.entities], assets: [...project.assets, ...(command.assets ?? [])], objectLayers:{...project.objectLayers,...command.objectLayers},...(command.towerTypes?.length?{towerTypes:[...(project.towerTypes??[]),...command.towerTypes]}:{}),...(command.towerAssemblies?.length?{towerAssemblies:[...(project.towerAssemblies??[]),...command.towerAssemblies]}:{}) }; break;
     case 'asset': {
       if (!project.assets.some((asset) => asset.id === command.asset.id)) throw new Error('The model no longer exists.');
       candidate = { ...project, assets: project.assets.map((asset) => asset.id === command.asset.id ? command.asset : asset) }; break;
@@ -178,12 +210,14 @@ export function applyCommand(project: Project, command: Command): Project {
       candidate = { ...project, entities: project.entities.filter(e=>!removed.has(e.id)).map(e=>e.kind==='unit'?{...e,memberIds:e.memberIds.filter(id=>!removed.has(id))}:e).filter(e=>e.kind!=='unit'||e.memberIds.length) };
       candidate.entities=detachInvalidJunctions(candidate.entities);
       candidate.repeatPatterns=project.repeatPatterns?.filter(p=>!removed.has(p.sourceId)).map(p=>({...p,excluded:[...new Set([...(p.excluded??[]),...Array.from({length:128},(_,i)=>i).filter(i=>removed.has(repeatMemberId(p,i)))])]}));
+      candidate.towerAssemblies=project.towerAssemblies?.filter(t=>!removed.has(t.levelId)&&!removed.has(t.parts.wall)).map(t=>({...t,detached:[...new Set([...(t.detached??[]),...Object.entries(t.parts).filter(([,id])=>removed.has(id)).map(([k])=>k as import('./towers').TowerPartKey)])]}));
       break;
     }
     case 'rename': candidate = { ...project, name: command.name }; break;
     case 'materials': candidate = { ...project, site:{...project.site,materials:command.materials} }; break;
   }
-  candidate=regenerateRepeats(candidate);
+  if(command.type==='assignArchitecturalMaterial')for(const before of project.entities){const after=candidate.entities.find(e=>e.id===before.id);if(after)candidate=captureTowerEdit(candidate,before,after);}
+  candidate=regenerateTowers(project,regenerateRepeats(candidate));
   candidate=resolveStairConnections(project,{...candidate,entities:followSpiralTowers(project.entities,followRoofTowers(project.entities,candidate.entities))});
   const layerCommand=['layer','removeLayer','activeLayer','assignLayer'].includes(command.type);
   if(!layerCommand){
@@ -197,7 +231,8 @@ export function applyCommand(project: Project, command: Command): Project {
     const assignments={...candidate.objectLayers};
     for(const entity of added){
       const repeat=repeatOwner(candidate,entity.id);
-      const inherited=repeat?objectLayer(candidate,repeat.sourceId):entity.kind==='instance'&&entity.regionId?(assignments[entity.regionId]??objectLayer(candidate,entity.regionId)):null;
+      const tower=towerOwner(candidate,entity.id);
+      const inherited=tower&&entity.id!==tower.levelId?(assignments[tower.levelId]??objectLayer(candidate,tower.levelId)):repeat?objectLayer(candidate,repeat.sourceId):entity.kind==='instance'&&entity.regionId?(assignments[entity.regionId]??objectLayer(candidate,entity.regionId)):null;
       const destination=assignments[entity.id]??inherited??project.activeLayerId;
       if(!destination||!layerState(candidate,destination).visible||layerState(candidate,destination).locked)throw new Error('Choose a visible, unlocked active layer before creating objects.');
       assignments[entity.id]=destination;
@@ -250,7 +285,7 @@ export class Editor {
     const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
     const sameMaterials=JSON.stringify([project.site.materials,project.architecturalMaterials])===JSON.stringify([before.site.materials,before.architecturalMaterials]);
-    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify(project.repeatPatterns)===JSON.stringify(before.repeatPatterns);
+    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify([project.repeatPatterns,project.towerTypes,project.towerAssemblies])===JSON.stringify([before.repeatPatterns,before.towerTypes,before.towerAssemblies]);
     const patch = terrainOnly ? diffHeights(before.site.terrain, project.site.terrain) : null;
     if (patch && !patch.indices.length) {
       this.publish({ preview: null, gestureLabel: null });

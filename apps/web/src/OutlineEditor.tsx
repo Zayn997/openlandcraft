@@ -5,7 +5,8 @@ import { applyCommand, dragOutline, flatRoofOutline, footprint, insertOutlineCor
 import type { OutlineHandle } from '../../../packages/viewport/src/outline-edit';
 import {ConicalRoofEditor} from './ConicalRoofEditor';
 import {StairEditor} from './StairEditor';
-export function OutlineEditor(props:Parameters<typeof PolygonOutlineEditor>[0]){return props.part.kind==='slab'&&props.part.stairs?<StairEditor {...props}/>:props.part.kind==='roof'&&props.part.cone?<ConicalRoofEditor {...props}/>:<PolygonOutlineEditor {...props}/>;}
+import {CircularFloorEditor} from './CircularFloorEditor';
+export function OutlineEditor(props:Parameters<typeof PolygonOutlineEditor>[0]){return props.part.kind==='slab'&&props.part.disk?<CircularFloorEditor {...props}/>:props.part.kind==='slab'&&props.part.stairs?<StairEditor {...props}/>:props.part.kind==='roof'&&props.part.cone?<ConicalRoofEditor {...props}/>:<PolygonOutlineEditor {...props}/>;}
 function PolygonOutlineEditor({ part, level, editing, editor, handle, onHandle, snapping, onSnapping, onFrame, onFinish, onSelect, status, onStatus }: {
   onAttachStair?:(end:import('@openlandcraft/core').StairEnd)=>void;part:OutlinePart;level?:Level;editing:boolean;editor:Editor;handle:OutlineHandle;onHandle:(handle:OutlineHandle)=>void;snapping:boolean;onSnapping:(value:boolean)=>void;onFrame:()=>void;onFinish:()=>void;onSelect:(id:string)=>void;status:string;onStatus:(message:string)=>void;
 }) {

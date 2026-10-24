@@ -10,8 +10,9 @@ import {remapRoofTower} from './conical-roofs';
 import {remapSpiralTower} from './spiral-stairs';
 import {remapStairConnections} from './stair-connections';
 import {architecturalMaterials,partMaterialIds,type ArchitecturalMaterial} from './architectural-materials';
+import {TOWER_PART_KEYS,type TowerType,type TowerAssembly} from './towers';
 
-export type EditorClipboard = { kind: 'opening'; opening: Opening;materials?:ArchitecturalMaterial[] } | { kind: 'entities'; entities: Entity[]; roots: string[]; assets: Asset[]; materials?:ArchitecturalMaterial[]; objectLayers?:Record<string,string> };
+export type EditorClipboard = { kind: 'opening'; opening: Opening;materials?:ArchitecturalMaterial[] } | { kind: 'entities'; entities: Entity[]; roots: string[]; assets: Asset[]; materials?:ArchitecturalMaterial[]; objectLayers?:Record<string,string>;towerTypes?:TowerType[];towerAssemblies?:TowerAssembly[] };
 function remapOpeningMaterials(o:Opening,ids:Map<string,string>):Opening{
  const j=o.joinery;if(!j)return o;return {...o,joinery:{...j,...(j.frame?{frame:{...j.frame,materialId:j.frame.materialId?ids.get(j.frame.materialId)??j.frame.materialId:undefined}}:{}),...(j.panel?{panel:{...j.panel,materialId:j.panel.materialId?ids.get(j.panel.materialId)??j.panel.materialId:undefined}}:{})}};
 }
@@ -42,7 +43,8 @@ export function copySelection(project: Project, selectedId: string | null, selec
   const entities = project.entities.filter(e => ids.has(e.id));
   const assetIds = new Set(entities.flatMap(e => 'assetId' in e ? [e.assetId] : []));
   const materialIds=new Set(entities.flatMap(e=>isBuildingPart(e)?partMaterialIds(e):[]));
-  return structuredClone({ kind: 'entities', entities, roots, materials:architecturalMaterials(project).filter(m=>materialIds.has(m.id)),objectLayers:Object.fromEntries(entities.map(e=>[e.id,objectLayer(project,e.id)])), assets: project.assets.filter(a => assetIds.has(a.id)) });
+  const towers=project.towerAssemblies?.filter(t=>ids.has(t.levelId));
+  return structuredClone({ kind: 'entities', entities, roots, materials:architecturalMaterials(project).filter(m=>materialIds.has(m.id)),objectLayers:Object.fromEntries(entities.map(e=>[e.id,objectLayer(project,e.id)])), assets: project.assets.filter(a => assetIds.has(a.id)),...(towers?.length?{towerAssemblies:towers,towerTypes:project.towerTypes?.filter(type=>towers.some(t=>t.typeId===type.id))}:{}) });
 }
 
 export type DragCopyPlacement = { worldDelta: [number, number]; snapping: boolean };
@@ -133,7 +135,13 @@ export function pasteSelection(project: Project, clipboard: EditorClipboard, sel
     if(entity.kind==='slab'&&entity.stairs?.connections)entity.stairs=remapStairConnections(entity,idMap,idMap.has(source.parentId)?[0,0]:shift as [number,number]).stairs;
     return entity;
   });
-  const insert:Command={ type: 'insert', entities, assets, objectLayers:Object.fromEntries(clipboard.entities.flatMap(e=>{const layer=clipboard.objectLayers?.[e.id];return layer&&project.layers.some(l=>l.id===layer)?[[idMap.get(e.id)!,layer]]:[];})) };
+  const newTypes:TowerType[]=[],typeMap=new Map<string,string>();
+  for(const [i,type] of (clipboard.towerTypes??[]).entries()){
+    const existing=project.towerTypes?.find(t=>t.id===type.id),same=existing&&JSON.stringify(existing)===JSON.stringify(type),id=same?existing.id:existing?`${prefix}-tower-type-${i}`:type.id;
+    typeMap.set(type.id,id);if(!same)newTypes.push({...type,id});
+  }
+  const towers=clipboard.towerAssemblies?.map((t,i)=>{const id=`${prefix}-tower-${i}`;return {...t,id,typeId:typeMap.get(t.typeId)!,levelId:idMap.get(t.levelId)!,parts:Object.fromEntries(TOWER_PART_KEYS.map(k=>[k,idMap.get(t.parts[k])??`${id}-${k}`])) as TowerAssembly['parts']};});
+  const insert:Command={ type: 'insert', entities, assets,...(towers?.length?{towerTypes:newTypes,towerAssemblies:towers}:{}), objectLayers:Object.fromEntries(clipboard.entities.flatMap(e=>{const layer=clipboard.objectLayers?.[e.id];return layer&&project.layers.some(l=>l.id===layer)?[[idMap.get(e.id)!,layer]]:[];})) };
   const command:Command=withMaterials(insert);
   applyCommand(project, command);
   return { command, selectedIds: clipboard.roots.map(id => idMap.get(id)!), displaced };

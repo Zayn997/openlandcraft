@@ -10,11 +10,13 @@ import { wallWalkIssue } from './wall-walks';
 import { stairFootprint,stairsIssue } from './stairs';
 import {railingIssue} from './railings';
 import {spiralIssue} from './spiral-stairs';
+import {circularFloorIssue} from './circular-floors';
 
 export type PlanPoint = [number, number];
 export const wallLength = (wall: Wall) => wall.curve ? wall.curve.radius * Math.abs(wall.curve.sweepAngle) * Math.PI / 180 : Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
 export const sameCorner = (a: PlanPoint, b: PlanPoint) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.00001;
 export function footprint(part: Slab | Roof): PlanPoint[] {
+  if(part.kind==='slab'&&part.disk)return Array.from({length:120},(_,i)=>[part.center[0]+part.disk!.radius*Math.cos(i*Math.PI/60),part.center[1]+part.disk!.radius*Math.sin(i*Math.PI/60)]);
   if(part.kind==='slab'&&part.stairs)return stairFootprint(part);
   if(part.kind==='roof'&&part.cone)return Array.from({length:120},(_,i)=>[part.center[0]+roofEavesRadius(part)*Math.cos(i*Math.PI/60),part.center[1]+roofEavesRadius(part)*Math.sin(i*Math.PI/60)]);
   const points: PlanPoint[] = part.outline ?? [[-part.width / 2, -part.depth / 2], [part.width / 2, -part.depth / 2], [part.width / 2, part.depth / 2], [-part.width / 2, part.depth / 2]];
@@ -204,7 +206,7 @@ export function architectureIssue(entities: Entity[]): string | null {
     const issue = outlineIssue(e.outline); if (issue) return issue;
   }
   for(const e of entities)if(e.kind==='roof'){const issue=conicalRoofIssue(e,entities);if(issue)return issue;}
-  for(const e of entities)if(e.kind==='slab'){const issue=stairsIssue(e)??spiralIssue(e,entities)??railingIssue(e);if(issue)return issue;}
+  for(const e of entities)if(e.kind==='slab'){const issue=circularFloorIssue(e)??stairsIssue(e)??spiralIssue(e,entities)??railingIssue(e);if(issue)return issue;}
   return null;
 }
 

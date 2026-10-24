@@ -6,6 +6,7 @@ import {wallWalkPlanPoints,wallWalkProfile} from './wall-walks';
 import {remapSpiralTower} from './spiral-stairs';
 import {remapStairConnections,resolveStairConnections,levelToWorld} from './stair-connections';
 import type { BuildingPart, Entity, Level, Project, Unit, Wall } from './model';
+import {towerOwner} from './towers';
 
 export const isBuildingPart = (e: Entity): e is BuildingPart => e.kind === 'wall' || e.kind === 'slab' || e.kind === 'roof';
 export function ownerLevel(project: Project, id: string | null): Level | undefined {
@@ -69,6 +70,7 @@ function assertCompleteJoins(project: Project, walls: Wall[]) {
 export type DuplicateAbove = { project: Project; selectedId: string; levelId: string; addedIds: string[]; movedRoofIds: string[]; height: number };
 /** Pure, atomic plan used by both the ghost preview and the committed command. */
 export function duplicateAbove(project: Project, sourceId: string, height: number, prefix: string): DuplicateAbove {
+  if(towerOwner(project,sourceId))throw new Error('Use Duplicate tower to copy the complete assembly, or make its components independent before copying storeys.');
   const source = project.entities.find(e => e.id === sourceId), level = ownerLevel(project, sourceId);
   if (!level || !source || (source.kind !== 'level' && source.kind !== 'unit')) throw new Error('Select a unit or floor to duplicate above.');
   if (!Number.isFinite(height) || height < 0.5 || height > 30) throw new Error('Use a floor-to-floor height from 0.5 to 30 m.');

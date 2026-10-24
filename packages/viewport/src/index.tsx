@@ -1,3 +1,4 @@
+import {TowerDrawing,type TowerDrawingProps} from './tower-drawing';
 import { FishSchoolProvider } from './fish-school-provider';
 import { GroundCharacterProvider } from './ground-characters';
 import { LibraryPlacementPreview } from './plant-preview';
@@ -56,6 +57,7 @@ export type ViewportMetrics = { fps: number; calls: number; triangles: number; r
   buffer?:{width:number;height:number;dpr:number};
 };
 type Props = {
+  towerDrawing?:TowerDrawingProps;
   repeatDrawing?:RepeatDrawingProps;
   plantAsset?: import('@openlandcraft/core').Asset | null;
   plantGrowth?: ReadonlyMap<string, number>;
@@ -76,7 +78,7 @@ type Props = {
   grid: boolean; playing: boolean; quality: 'low' | 'high';
   view: CameraView; projection:CameraProjection;onNavigationView: (view: CameraView) => void; frameToken: number; frameCancelToken: number;
   onMetrics: (metrics: ViewportMetrics) => void;
-  editor: Editor; tool: 'select' | 'repeat' | 'plant' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'stairs' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
+  editor: Editor; tool: 'select' | 'tower' | 'repeat' | 'plant' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'stairs' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
   onStrokeTime: (milliseconds: number) => void;
   onGroundPoint: (x: number, z: number) => void; onError: (message: string) => void;
   transformMode: TransformMode; snapping: boolean;
@@ -227,7 +229,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
   }, [cursor, brush.radius, tool, project.site.terrain]);
   useEffect(() => () => ring?.dispose(), [ring]);
   return <group>
-    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={painting ? paint.cancel : cancel} onLostPointerCapture={painting ? paint.cancel : cancel} onPointerOut={() => { paint.out(); if (!stroke.current) setCursor(null); }} onClick={(event) => { if(stairAttachment){event.stopPropagation();if(stairAttachment.end==='bottom'&&stairAttachment.surface==='terrain'&&event.button===0&&event.delta<=4)stairAttachment.onPick([event.point.x,event.point.z]);return;} if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if (((tool === 'plant' && !painting) || tool === 'repeat' || tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.button === 0 && event.delta <= 4 && drawingClick(event.button)) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
+    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={painting ? paint.cancel : cancel} onLostPointerCapture={painting ? paint.cancel : cancel} onPointerOut={() => { paint.out(); if (!stroke.current) setCursor(null); }} onClick={(event) => { if(stairAttachment){event.stopPropagation();if(stairAttachment.end==='bottom'&&stairAttachment.surface==='terrain'&&event.button===0&&event.delta<=4)stairAttachment.onPick([event.point.x,event.point.z]);return;} if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if (((tool === 'plant' && !painting) || tool === 'tower' || tool === 'repeat' || tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.button === 0 && event.delta <= 4 && drawingClick(event.button)) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
       <CoastalTerrainMaterial site={project.site} />
     </mesh>
     {ring && <lineLoop geometry={ring} raycast={() => undefined} renderOrder={10} userData={{waterCaptureExclude:true}}><lineBasicMaterial color={brush.kind === 'lower' ? '#e7b0a1' : '#e4ffb2'} depthTest={false} /></lineLoop>}
@@ -515,6 +517,7 @@ export function Viewport(authored: Props) {
           <group onPointerOver={() => setHovering(true)} onPointerOut={() => setHovering(false)}>
             {props.project.entities.filter((entity): entity is Block => entity.kind === 'block' && entity.visible).map((entity) => <Massing key={entity.id} blockOpeningEdit={(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} entity={entity} selected={selectedParts.includes(entity.id)||entity.id === props.selectedId} onSelect={(id) => { if (props.tool === 'select') props.onSelect(id); }} />)}
             {props.repeatDrawing&&<RepeatDrawing project={props.project} draft={props.repeatDrawing} onPoint={props.onGroundPoint} onError={props.onError}/>}
+            {props.towerDrawing&&<TowerDrawing project={props.project} draft={props.towerDrawing} onPoint={props.onGroundPoint}/>}
             {props.architectureDrawing&&(props.architectureDrawing.kind==='stairs'
               ? <StairsDrawing shape={props.architectureDrawing.stairShape} tower={props.architectureDrawing.stairTower} level={props.architectureDrawing.level} points={props.wallDraft} dimensions={props.architectureDrawing.stairDimensions} offset={props.architectureDrawing.offset} snapping={props.snapping} onPoint={props.onGroundPoint}/>
               : props.architectureDrawing.kind==='roof'&&props.architectureDrawing.roofShape==='conical'

@@ -18,6 +18,7 @@ type Props = {
   onWater: () => void;
   onDrawPath: () => void;
   onRepeat: () => void;
+  onTower: () => void;
   onAddOcean: () => void;
   onPlaceAsset: (asset: Asset) => void;
   onRemoveAsset: (id: string) => void;
@@ -26,7 +27,7 @@ type Props = {
 /** Editor commands remain in App; this component only presents the creation menu. */
 export function CreationMenu({
   project, busy, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
-  onRegions, onWater, onDrawPath, onRepeat, onAddOcean, onPlaceAsset, onRemoveAsset,
+  onRegions, onWater, onDrawPath, onRepeat, onTower, onAddOcean, onPlaceAsset, onRemoveAsset,
 }: Props) {
   const hasPath = project.entities.some(entity => entity.kind === 'path');
   const hasOcean = project.entities.some(entity => entity.kind === 'ocean');
@@ -41,6 +42,7 @@ export function CreationMenu({
         <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><Layers />Floor</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><Focus />Roof</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('stairs')}><Layers />Stairs</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onTower}><Box />Tower assembly</DropdownMenuItem>
         <DropdownMenuItem disabled={busy} onSelect={onRepeat}><Route />Repeat along line / arc</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBlock}><Box />Add massing block</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBuilding}><Layers />Add building</DropdownMenuItem>

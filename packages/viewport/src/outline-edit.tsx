@@ -63,6 +63,10 @@ export function OutlineEdit({ part, level, handle, onHandle, editor, snapping, t
   };
   const events={onPointerMove:move,onPointerUp:up,onPointerCancel:cancel,onLostPointerCapture:cancel,onClick:(e:ThreeEvent<MouseEvent>)=>e.stopPropagation(),onDoubleClick:(e:ThreeEvent<MouseEvent>)=>e.stopPropagation()};
   const points=footprint(part),color=rejected?'#ed775f':'#d7f29c';
+  if(part.kind==='slab'&&part.disk){
+    const [x,z]=part.center,y=part.elevation+part.thickness+.1;
+    return <group position={level.position} rotation={[0,level.rotation*Math.PI/180,0]} userData={{waterCaptureExclude:true,copyEntityId:part.id}}><mesh geometry={geometry} {...events} onPointerDown={e=>down(e,'move')}><meshBasicMaterial color={color} transparent opacity={.2} depthWrite={false}/></mesh><Line points={[...points,points[0]].map(p=>[p[0],y,p[1]])} color={color} depthTest={false} raycast={()=>undefined}/><StairGrip position={[x,y,z]} label="Center" color={color} events={events} onDown={e=>down(e,'move')}/><StairGrip position={[x+part.disk.radius,y,z]} label="Radius" color={color} events={events} onDown={e=>down(e,'radius')}/></group>;
+  }
   if(part.kind==='slab'&&part.stairs){
     if(part.stairs.spiral){
       const {radius}=part.stairs.spiral,[cx,cz]=part.center,base=part.elevation,rise=part.stairs.rise;
