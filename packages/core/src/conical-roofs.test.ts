@@ -46,7 +46,7 @@ describe('editable conical roofs in the shared roof model',()=>{
   });
   it('migrates format 20 without changing authored roofs or openings and rejects cone fields in old files',()=>{
     const flat:Roof={id:'flat',kind:'roof',name:'Flat',parentId:level.id,visible:true,color:'#667869',center:[0,0],width:8,depth:8,elevation:8,rise:.2,outline:[[-4,-4],[4,-4],[4,4],[-4,4]]},p=scene(tower(),flat),legacy={...p,version:20},snapshot=structuredClone(legacy);
-    expect(parseProject(legacy)).toEqual({...p,version:31});expect(legacy).toEqual(snapshot);expect(()=>parseProject({...legacy,entities:[level,roof()]})).toThrow();
+    expect(parseProject(legacy)).toEqual({...p,version:32});expect(legacy).toEqual(snapshot);expect(()=>parseProject({...legacy,entities:[level,roof()]})).toThrow();
   });
   it('honors the existing layer locks for roof edits and leaves other objects untouched',()=>{
     const p=scene(tower(),roof());p.layers.push({id:'locked',name:'Locked',visible:true,locked:true,parentId:null,color:'#333333'});p.objectLayers.roof='locked';const editor=new Editor(p),before=editor.getSnapshot();

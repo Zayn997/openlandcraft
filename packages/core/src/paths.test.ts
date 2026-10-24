@@ -62,8 +62,8 @@ describe('path authoring and compatibility', () => {
   });
   it('migrates version 8 without changing water, terrain or source entities', () => {
     const source = structuredClone(legacy), current = parseProject(legacy);
-    expect(current).toEqual({...source,version:31,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
-    expect(() => parseProject({ ...current, version:32 })).toThrow();
+    expect(current).toEqual({...source,version:32,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
+    expect(() => parseProject({ ...current, version:33 })).toThrow();
     expect(() => parseProject({ ...source, entities: [...source.entities, createPath(current)] })).toThrow();
   });
   it('rejects unsupported geometry, modes and second paths atomically', () => {

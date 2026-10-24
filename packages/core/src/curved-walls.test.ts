@@ -70,7 +70,7 @@ describe('native editable curved walls',()=>{
   });
   it('upgrades version 18 without changing authored data and rejects new curves in old files',()=>{
     const legacy={...scene(),version:18},before=structuredClone(legacy),upgraded=parseProject(legacy);
-    expect(upgraded).toEqual({...legacy,version:31});expect(legacy).toEqual(before);
+    expect(upgraded).toEqual({...legacy,version:32});expect(legacy).toEqual(before);
     expect(()=>parseProject({...legacy,entities:[level,circle()]})).toThrow();
   });
 });

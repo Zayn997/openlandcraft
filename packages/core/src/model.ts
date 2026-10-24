@@ -9,6 +9,7 @@ import { riverWaterSchema, RIVER_WATER_DEFAULTS } from './river-water';
 import {stairConnectionsIssue} from './stair-connections';
 import {architecturalMaterialSchema,ARCHITECTURAL_MATERIAL_DEFAULTS} from './architectural-materials';
 import {openingJoinerySchema,openingJoineryIssue} from './opening-joinery';
+import {repeatPatternSchema,repeatIssue} from './repeats';
 
 const finite = z.number().finite();
 const position = z.tuple([finite.min(-500).max(500), finite.min(-50).max(100), finite.min(-500).max(500)]);
@@ -174,7 +175,9 @@ const versionTwentySevenSchema=versionFifteenSchema.extend({version:z.literal(27
 const versionTwentyEightSchema=versionFifteenSchema.extend({version:z.literal(28),entities:z.array(z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,levelSchema,wallSchema,versionTwentyEightSlabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema])).max(1000)});
 const versionTwentyNineSchema=versionFifteenSchema.extend({version:z.literal(29),entities:z.array(z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,levelSchema,versionTwentyNineWallSchema,versionTwentyNineSlabSchema,versionTwentyNineRoofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema])).max(1000)});
 const versionThirtySchema=versionFifteenSchema.extend({version:z.literal(30),architecturalMaterials:z.array(architecturalMaterialSchema).max(64).optional(),entities:z.array(z.discriminatedUnion('kind',[blockSchema,oceanSchema,instanceSchema,levelSchema,versionThirtyWallSchema,slabSchema,roofSchema,riverSchema,pathSchema,lakeSchema,materialRegionSchema,plantingRegionSchema,buildingSchema,unitSchema])).max(1000)});
-export const projectSchema = versionFifteenSchema.extend({version:z.literal(31),architecturalMaterials:z.array(architecturalMaterialSchema).max(64).optional()}).superRefine((project, ctx) => {
+const versionThirtyOneSchema=versionFifteenSchema.extend({version:z.literal(31),architecturalMaterials:z.array(architecturalMaterialSchema).max(64).optional()});
+export const projectSchema = versionThirtyOneSchema.extend({version:z.literal(32),repeatPatterns:z.array(repeatPatternSchema).max(32).optional()}).superRefine((project, ctx) => {
+  const repeatError=repeatIssue(project);if(repeatError)ctx.addIssue({code:'custom',path:['repeatPatterns'],message:repeatError});
   const materials=project.architecturalMaterials??ARCHITECTURAL_MATERIAL_DEFAULTS,materialIds=new Set(materials.map(m=>m.id));
   if(materialIds.size!==materials.length)ctx.addIssue({code:'custom',path:['architecturalMaterials'],message:'Shared material IDs must be unique.'});
   for(const e of project.entities)if((e.kind==='wall'||e.kind==='slab'||e.kind==='roof')&&e.materialId&&!materialIds.has(e.materialId))ctx.addIssue({code:'custom',path:['entities'],message:'Architectural elements must reference an existing shared material.'});
@@ -329,6 +332,7 @@ export function parseProject(value: unknown): Project {
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===28){const legacy=versionTwentyEightSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:29};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===29){const legacy=versionTwentyNineSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:30};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===30){const legacy=versionThirtySchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:31};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===31){const legacy=versionThirtyOneSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:32};}
   const result = projectSchema.safeParse(candidate);
   if (!result.success) {
     const issue = result.error.issues[0];

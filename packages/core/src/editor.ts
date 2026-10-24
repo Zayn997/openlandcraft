@@ -8,6 +8,7 @@ const stairStartDelta=(a:import('./model').Slab,b:import('./model').Slab)=>{cons
 import {resolveStairConnections} from './stair-connections';
 import {architecturalMaterials,architecturalMaterialUsers,architecturalMaterialSchema,type ArchitecturalMaterial} from './architectural-materials';
 import { parseProject, type Entity, type Project } from './model';
+import {overrideRepeatMember,regenerateRepeats,repeatMemberId,repeatOwner,repeatPatternSchema,repeatSources,type RepeatPattern} from './repeats';
 import {detachedInstance,plantingInstanceChanged,regeneratePlanting} from './regions';
 import type {PlantingRegion} from './model';
 import type { Asset } from './assets';
@@ -15,6 +16,10 @@ import type { TerrainMaterials } from './materials';
 import { diffHeights, restoreHeights, terrainSchema, type Heightfield, type HeightPatch } from '@openlandcraft/landscape';
 
 export type Command =
+  | {type:'repeat';pattern:RepeatPattern}
+  | {type:'removeRepeat';id:string;deleteObjects?:boolean}
+  | {type:'detachRepeatMember';id:string}
+  | {type:'resetRepeatMember';id:string}
   | {type:'layer';layer:Layer}
   | {type:'removeLayer';id:string}
   | {type:'activeLayer';id:string}
@@ -66,6 +71,27 @@ export function applyCommand(project: Project, command: Command): Project {
   }
   let candidate: Project;
   switch (command.type) {
+    case 'repeat': {
+      const pattern=repeatPatternSchema.parse(command.pattern),old=project.repeatPatterns?.find(p=>p.id===pattern.id);
+      if(old&&old.sourceId!==pattern.sourceId)throw new Error('Keep the existing source; edit it or create a new repeat.');
+      if(old&&project.entities.some(e=>repeatOwner(project,e.id)?.id===old.id&&!canEditObject(project,e.id)))throw new Error('Unlock and show the repeated objects before changing their rule.');
+      if(!repeatSources(project).some(e=>e.id===pattern.sourceId))throw new Error('Choose an independent block or static model source.');
+      if(!canEditObject(project,pattern.sourceId))throw new Error('Unlock and show the repeat source first.');
+      if(!old&&project.entities.some(e=>Array.from({length:128},(_,i)=>repeatMemberId(pattern,i)).includes(e.id)))throw new Error('Repeat object IDs already exist.');
+      candidate={...project,repeatPatterns:old?project.repeatPatterns!.map(p=>p.id===pattern.id?pattern:p):[...(project.repeatPatterns??[]),pattern]};break;
+    }
+    case 'removeRepeat': {
+      const pattern=project.repeatPatterns?.find(p=>p.id===command.id);if(!pattern)throw new Error('The repeat no longer exists.');
+      if(project.entities.some(e=>repeatOwner(project,e.id)?.id===pattern.id&&!canEditObject(project,e.id)))throw new Error('Unlock and show the repeated objects first.');
+      candidate={...project,repeatPatterns:project.repeatPatterns!.filter(p=>p.id!==pattern.id),entities:command.deleteObjects?project.entities.filter(e=>repeatOwner(project,e.id)?.id!==pattern.id):project.entities};break;
+    }
+    case 'detachRepeatMember':
+    case 'resetRepeatMember': {
+      const p=repeatOwner(project,command.id);if(!p||!project.entities.some(e=>e.id===command.id))throw new Error('Choose a linked repeated object.');
+      if(!canEditObject(project,command.id))throw new Error('Unlock and show the repeated object first.');
+      const slot=Number(command.id.slice(p.id.length+1)),overrides={...p.overrides};delete overrides[String(slot)];
+      candidate={...project,repeatPatterns:project.repeatPatterns!.map(rule=>rule.id===p.id?{...rule,overrides,...(command.type==='detachRepeatMember'?{excluded:[...(rule.excluded??[]),slot]}:{})}:rule)};break;
+    }
     case 'architecturalMaterial': {
       const material=architecturalMaterialSchema.parse(command.material),library=architecturalMaterials(project);
       const protectedOwner=(id:string,seen=new Set<string>()):boolean=>{if(seen.has(id))return false;seen.add(id);return layerState(project,objectLayer(project,id)).locked||objectOwners(project,id).some(owner=>protectedOwner(owner,seen));};
@@ -124,6 +150,7 @@ export function applyCommand(project: Project, command: Command): Project {
       if(current.kind==='instance'&&current.regionId&&replacement.kind==='instance'&&plantingInstanceChanged(current,replacement))replacement=detachedInstance(replacement);
       if(current.kind==='plantingRegion'&&replacement.kind==='plantingRegion'&&(Object.keys(current) as (keyof PlantingRegion)[]).some(key=>key!=='name'&&key!=='visible'&&JSON.stringify(current[key])!==JSON.stringify((replacement as PlantingRegion)[key])))throw new Error('Preview regeneration to change planting region settings.');
       candidate = { ...project, entities: current.kind==='wall'&&replacement.kind==='wall'?replaceJoinedWall(project.entities,current,replacement):project.entities.map((e) => e.id === command.entity.id ? replacement : e) };
+      if((current.kind==='block'||current.kind==='instance')&&(replacement.kind==='block'||replacement.kind==='instance'))candidate=overrideRepeatMember(candidate,current,replacement);
       break;
     }
     case 'add': candidate = { ...project, entities: [...project.entities, command.entity] }; break;
@@ -150,11 +177,13 @@ export function applyCommand(project: Project, command: Command): Project {
       project.entities.forEach(e=>{if(removed.has(e.parentId)||e.kind==='instance'&&e.regionId&&removed.has(e.regionId))removed.add(e.id);});
       candidate = { ...project, entities: project.entities.filter(e=>!removed.has(e.id)).map(e=>e.kind==='unit'?{...e,memberIds:e.memberIds.filter(id=>!removed.has(id))}:e).filter(e=>e.kind!=='unit'||e.memberIds.length) };
       candidate.entities=detachInvalidJunctions(candidate.entities);
+      candidate.repeatPatterns=project.repeatPatterns?.filter(p=>!removed.has(p.sourceId)).map(p=>({...p,excluded:[...new Set([...(p.excluded??[]),...Array.from({length:128},(_,i)=>i).filter(i=>removed.has(repeatMemberId(p,i)))])]}));
       break;
     }
     case 'rename': candidate = { ...project, name: command.name }; break;
     case 'materials': candidate = { ...project, site:{...project.site,materials:command.materials} }; break;
   }
+  candidate=regenerateRepeats(candidate);
   candidate=resolveStairConnections(project,{...candidate,entities:followSpiralTowers(project.entities,followRoofTowers(project.entities,candidate.entities))});
   const layerCommand=['layer','removeLayer','activeLayer','assignLayer'].includes(command.type);
   if(!layerCommand){
@@ -167,7 +196,8 @@ export function applyCommand(project: Project, command: Command): Project {
     const added=candidate.entities.filter(e=>!project.entities.some(old=>old.id===e.id));
     const assignments={...candidate.objectLayers};
     for(const entity of added){
-      const inherited=entity.kind==='instance'&&entity.regionId?(assignments[entity.regionId]??objectLayer(candidate,entity.regionId)):null;
+      const repeat=repeatOwner(candidate,entity.id);
+      const inherited=repeat?objectLayer(candidate,repeat.sourceId):entity.kind==='instance'&&entity.regionId?(assignments[entity.regionId]??objectLayer(candidate,entity.regionId)):null;
       const destination=assignments[entity.id]??inherited??project.activeLayerId;
       if(!destination||!layerState(candidate,destination).visible||layerState(candidate,destination).locked)throw new Error('Choose a visible, unlocked active layer before creating objects.');
       assignments[entity.id]=destination;
@@ -220,7 +250,7 @@ export class Editor {
     const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
     const sameMaterials=JSON.stringify([project.site.materials,project.architecturalMaterials])===JSON.stringify([before.site.materials,before.architecturalMaterials]);
-    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution;
+    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify(project.repeatPatterns)===JSON.stringify(before.repeatPatterns);
     const patch = terrainOnly ? diffHeights(before.site.terrain, project.site.terrain) : null;
     if (patch && !patch.indices.length) {
       this.publish({ preview: null, gestureLabel: null });

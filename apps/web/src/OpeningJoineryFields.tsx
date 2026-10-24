@@ -23,13 +23,12 @@ export function OpeningJoineryFields({kind,value,onChange,project,disabled=false
    {material('frame')}
    {value.frameMaterial==='local'&&<Field variant="color"><ColorInput aria-label="Frame color" value={value.frameColor} onChange={e=>change({frameColor:e.target.value})}/><span>Frame color</span></Field>}
   </>}
-  <Field>Infill<SelectInput aria-label="Opening infill" value={value.infill?'filled':'transparent'} disabled={disabled} onValueChange={mode=>change({infill:mode==='filled'})}><SelectOption value="transparent">Transparent / open</SelectOption><SelectOption value="filled">{kind==='door'?'Door panel · material':'Window glass · tinted'}</SelectOption></SelectInput></Field>
+  <Field>Material<SelectInput aria-label="Opening material" value={!value.infill?'transparent':kind==='window'?'glass':value.panelMaterial} disabled={disabled} onValueChange={id=>change({infill:id!=='transparent',...(kind==='door'&&id!=='transparent'?{panelMaterial:id}:{})})}><SelectOption value="transparent">Transparent</SelectOption>{kind==='window'?<SelectOption value="glass">Tinted glass</SelectOption>:<><SelectOption value="local">Timber · local color</SelectOption>{library.map(m=><SelectOption key={m.id} value={m.id}>{m.name} · shared</SelectOption>)}</>}</SelectInput></Field>
   {value.infill&&<>
    <Field>{kind==='door'?'Panel':'Glass'} thickness · m<NumericInput aria-label={kind==='door'?'Panel thickness':'Glass thickness'} min={kind==='door'?.02:.005} max={kind==='door'?.2:.05} step="any" required value={value.thickness} onChange={e=>change({thickness:e.target.value})}/></Field>
-   {kind==='door'&&material('panel')}
    {(kind==='window'||value.panelMaterial==='local')&&<Field variant="color"><ColorInput aria-label={kind==='door'?'Panel color':'Glass tint'} value={value.infillColor} onChange={e=>change({infillColor:e.target.value})}/><span>{kind==='door'?'Panel color':'Glass tint'}</span></Field>}
    {kind==='window'&&<Field>Glass opacity<NumericInput aria-label="Glass opacity" min={.05} max={.8} step="any" required value={value.opacity} onChange={e=>change({opacity:e.target.value})}/></Field>}
   </>}
-  <FieldMessage>Transparent / open leaves the opening clear. Frames, material panels and tinted glass are optional and follow the wall curve and arch. Frame width reduces clear space; depth and thickness are capped at wall thickness.</FieldMessage>
+  <FieldMessage>Transparent leaves the opening clear. Choose a material to add a panel or glass. Frames and materials follow the wall curve and arch.</FieldMessage>
  </fieldset>;
 }
