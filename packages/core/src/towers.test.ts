@@ -61,6 +61,6 @@ describe('reusable native tower assemblies',()=>{
   const locked={...p,layers:[...p.layers,{id:'locked',name:'Locked',parentId:null,color:'#ffffff',visible:true,locked:true}],objectLayers:{...p.objectLayers,'tower-floor1':'locked'}};expect(()=>applyCommand(locked,{type:'towerType',definition:{...type,radius:8}})).toThrow('Unlock');expect(()=>applyCommand(p,{type:'replace',entity:{...floor(p),width:9}})).toThrow();expect(()=>parseProject({...p,towerTypes:[]})).toThrow();
  });
  it('preserves format-32 projects unchanged and persists reusable types, overrides and components in format 33',async()=>{
-  let p=scene('roof');p=applyCommand(p,{type:'replace',entity:{...floor(p),color:'#123456'}});expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);const old={...createSite({name:'Legacy',width:80,depth:80,resolution:129,preset:'flat'}),version:32};expect(parseProject(old).version).toBe(33);expect(old.version).toBe(32);expect(()=>parseProject({...p,version:32})).toThrow();
+  let p=scene('roof');p=applyCommand(p,{type:'replace',entity:{...floor(p),color:'#123456'}});expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);const old={...createSite({name:'Legacy',width:80,depth:80,resolution:129,preset:'flat'}),version:32};expect(parseProject(old).version).toBe(39);expect(old.version).toBe(32);expect(()=>parseProject({...p,version:32})).toThrow();
  });
 });

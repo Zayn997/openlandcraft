@@ -1,5 +1,6 @@
 import {footprint} from './architecture';
-import { walkingRouteIssue, type PathPoint } from '@openlandcraft/landscape';
+import { walkingRouteIssue, roundedRoutePoints, MAX_LANDSCAPE_PATHS, type PathPoint } from '@openlandcraft/landscape';
+import { canEditObject } from './layers';
 import { pathSchema, type Level, type Path, type Project } from './model';
 import { snap } from './placement';
 export const ROUND_PATH_GESTURE='Round path corner';
@@ -15,14 +16,14 @@ export function createDrawnPath(project: Project, points: PathPoint[], settings:
   if (points.length < 2) throw new Error('Click at least a start and an end point before finishing the path.');
   const original = replaceId ? project.entities.find(e => e.id === replaceId) : undefined;
   if (replaceId && original?.kind !== 'path') throw new Error('The path no longer exists. Start a new drawing.');
-  if (project.entities.some(e => e.kind === 'path' && e.id !== replaceId)) throw new Error('Redraw the existing path to change its route.');
-  const path = pathSchema.parse({...(original?.kind === 'path' ? original : createPath(project,points)),...settings,cornerRounding:settings.cornerRounding,points:points.map(p => [...p])});
+  if (!replaceId && project.entities.filter(e=>e.kind==='path').length>=MAX_LANDSCAPE_PATHS) throw new Error(`Keep the garden network within ${MAX_LANDSCAPE_PATHS} paths.`);
+  const path = pathSchema.parse({...(original?.kind === 'path' ? original : createPath(project,points)),width:settings.width,surface:settings.surface,cornerRounding:settings.cornerRounding,points:points.map(p => [...p])});
   const issue = walkingRouteIssue(path,project.site); if (issue) throw new Error(issue);
   return path;
 }
 
 /** Placement snapping only: no hidden attachment to future building edits. */
-export function snapPathPoint(project: Project, point: PathPoint, enabled: boolean, endpoint = true): { point: PathPoint; target: string | null } {
+export function snapPathPoint(project: Project, point: PathPoint, enabled: boolean, endpoint = true, excludeId?: string, isolatedLayerId: string|null = null): { point: PathPoint; target: string | null } {
   if (!enabled) return { point, target: null };
   let nearest = 0.8, result: PathPoint | null = null, target: string | null = null;
   const consider = (p: PathPoint, name: string) => {
@@ -30,7 +31,15 @@ export function snapPathPoint(project: Project, point: PathPoint, enabled: boole
     if (distance < nearest) { nearest = distance; result = p; target = name; }
   };
   if (endpoint) for (const entity of project.entities) {
-    if (!entity.visible) continue;
+    if (!entity.visible || entity.id===excludeId || !canEditObject(project,entity.id,isolatedLayerId)) continue;
+    if(entity.kind==='path'){
+      const points=roundedRoutePoints(entity);
+      for(let i=1;i<points.length;i++){
+        const a=points[i-1],b=points[i],dx=b[0]-a[0],dz=b[1]-a[1],lengthSquared=dx*dx+dz*dz;
+        const t=lengthSquared?Math.max(0,Math.min(1,((point[0]-a[0])*dx+(point[1]-a[1])*dz)/lengthSquared)):0;
+        consider([a[0]+dx*t,a[1]+dz*t],entity.name);
+      }
+    }
     if (entity.kind === 'block' || entity.kind === 'slab' || entity.kind === 'wall') {
       const level = project.entities.find((e): e is Level => e.kind === 'level' && e.id === entity.parentId && e.visible);
       if (entity.kind !== 'block' && level?.kind !== 'level') continue;

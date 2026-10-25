@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import type {Block,Entity,Instance,Project} from './model';
 import {assetAnimation} from './asset-animation';
+import {mirrorOwner} from './mirrors';
 
 const number=z.number().finite(),point=z.tuple([number.min(-500).max(500),number.min(-500).max(500)]);
 const vector=z.tuple([number,number,number]);
@@ -24,7 +25,7 @@ type RepeatDocument={entities:Entity[];repeatPatterns?:RepeatPattern[];assets:Pr
 export const repeatMemberId=(pattern:RepeatPattern,slot:number)=>`${pattern.id}:${slot}`;
 export function repeatOwner(project:Pick<Project,'repeatPatterns'>,id:string){return project.repeatPatterns?.find(p=>Array.from({length:128},(_,i)=>i).some(i=>repeatMemberId(p,i)===id&&!p.excluded?.includes(i)));}
 export function repeatSources(project:Project):RepeatSource[]{
- return project.entities.filter((e):e is RepeatSource=>(e.kind==='block'||e.kind==='instance'&&!e.regionId&&!e.walkingRoute&&!assetAnimation(project.assets.find(a=>a.id===e.assetId)!))&&!repeatOwner(project,e.id));
+ return project.entities.filter((e):e is RepeatSource=>(e.kind==='block'||e.kind==='instance'&&!e.regionId&&!e.walkingRoute&&!assetAnimation(project.assets.find(a=>a.id===e.assetId)!))&&!repeatOwner(project,e.id)&&!mirrorOwner(project,e.id));
 }
 const radians=(n:number)=>n*Math.PI/180;
 const angle=(n:number)=>((n+180)%360+360)%360-180;
@@ -72,6 +73,7 @@ export function repeatIssue(project:RepeatDocument):string|null{
   const source=project.entities.find(e=>e.id===p.sourceId);
   if(!source||(source.kind!=='block'&&source.kind!=='instance')||source.kind==='instance'&&(source.regionId||source.walkingRoute))return 'Choose an independent block or static model as the repeat source.';
   if(repeatOwner(project,source.id))return 'Repeated members cannot be shared sources. Detach the object first.';
+  if(mirrorOwner(project as Project,source.id))return 'Detach mirrored objects before using them as repeat sources.';
   if(source.kind==='instance'){
    const asset=project.assets.find(a=>a.id===source.assetId);if(!asset)return 'The repeat source model is missing.';
    if(assetAnimation(asset))return 'Choose a static model for repetition.';

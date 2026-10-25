@@ -2,14 +2,16 @@ import {useEffect,useLayoutEffect,useMemo,useRef} from 'react';
 import {useThree,type ThreeEvent} from '@react-three/fiber';
 import * as THREE from 'three';
 import {groundHeight,snap,type Editor,type MaterialRegion,type Project,type Region} from '@openlandcraft/core';
-import {lakeDistance,type PathPoint} from '@openlandcraft/landscape';
+import {lakeDistance,regionIssue,surfaceElevationAt,type SiteSurface,type PathPoint} from '@openlandcraft/landscape';
 import {buildRegionMesh,updateRegionHeights} from './region-geometry';
 import {intersectTerrain} from './terrain-picking';
-import {PathDraft} from './path';
+import {PathDraft,pathMaterial} from './path';
+import {PATH_LIFT} from './path-geometry';
 import {PointNumber} from './river';
 
 function materialFor(region:Region){
   if(region.kind==='plantingRegion')return new THREE.MeshBasicMaterial({color:'#cbe29a',transparent:true,opacity:0.09,depthWrite:false});
+  if(region.surface==='paving')return pathMaterial('paving',{color:region.color,roughness:region.roughness,scale:region.detailScale});
   const material=new THREE.MeshStandardMaterial({color:region.color,roughness:region.roughness,side:THREE.DoubleSide});
   material.onBeforeCompile=shader=>{
     shader.vertexShader='varying vec2 vRegion;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\nvRegion=uv;');
@@ -18,11 +20,16 @@ function materialFor(region:Region){
       grain=mix(grain,0.5,smoothstep(0.01,0.15,max(length(dFdx(p)),length(dFdy(p)))));diffuseColor.rgb*=0.82+grain*0.32;`);
   };material.customProgramCacheKey=()=>`region-${region.surface}-${region.detailScale}`;return material;
 }
-export function RegionDraft({points,site}:{points:PathPoint[];site:Project['site']}){return <PathDraft points={points.length>=3?[...points,points[0]]:points} site={site}/>;}
-export function RegionLayer({region,project,order,selected,enabled,snapping,editor,onSelect,onError}:{region:Region;project:Project;order:number;selected:boolean;enabled:boolean;snapping:boolean;editor:Editor;onSelect:(id:string)=>void;onError:(message:string)=>void}){
-  const shape=JSON.stringify(region.points),site=project.site,lift=0.012+order*0.001;
-  const mesh=useMemo(()=>buildRegionMesh(region.points,site,lift),[shape,site.width,site.depth,site.terrain.columns,site.terrain.rows]);
-  useLayoutEffect(()=>updateRegionHeights(mesh,site,lift),[mesh,site.terrain,lift]);useEffect(()=>()=>mesh.geometry.dispose(),[mesh]);
+export function RegionDraft({points,site,fill=false,elevationSurface}:{points:PathPoint[];site:Project['site'];fill?:boolean;elevationSurface?:SiteSurface}){
+  const preview=useMemo(()=>fill&&points.length>=3&&!regionIssue(points,site)?buildRegionMesh(points,site,PATH_LIFT+.01):null,[points,site,fill]);
+  useEffect(()=>()=>preview?.geometry.dispose(),[preview]);
+  return <group>{preview&&<mesh geometry={preview.geometry} raycast={()=>undefined} renderOrder={14}><meshBasicMaterial color="#d7f29c" transparent opacity={.35} depthWrite={false} side={THREE.DoubleSide}/></mesh>}<PathDraft points={points.length>=3?[...points,points[0]]:points} site={site} elevationSurface={elevationSurface}/></group>;
+}
+export function RegionLayer({region,project,order,selected,enabled,snapping,editor,onSelect,onError,surfaces}:{region:Region;project:Project;order:number;selected:boolean;enabled:boolean;snapping:boolean;editor:Editor;onSelect:(id:string)=>void;onError:(message:string)=>void;surfaces?:PathPoint[][]}){
+  const shape=JSON.stringify(region.points),site=project.site,lift=region.kind==='materialRegion'&&region.surface==='paving'?PATH_LIFT:0.012+order*0.001;
+  const mesh=useMemo(()=>buildRegionMesh(region.points,site,lift,surfaces,region),[shape,surfaces,site.width,site.depth,site.terrain.columns,site.terrain.rows]);
+  const elevationKey=region.kind==='materialRegion'?JSON.stringify([region.elevationMode,region.elevation]):'';
+  useLayoutEffect(()=>updateRegionHeights(mesh,site,lift,region),[mesh,site.terrain,lift,elevationKey]);useEffect(()=>()=>mesh.geometry.dispose(),[mesh]);
   const material=useMemo(()=>materialFor(region),[region.kind,(region as MaterialRegion).surface,(region as MaterialRegion).color,(region as MaterialRegion).roughness,(region as MaterialRegion).detailScale]);useEffect(()=>()=>material.dispose(),[material]);
   const orbit=useThree(s=>s.controls) as unknown as {enabled:boolean}|null,allowed=useRef(enabled);allowed.current=enabled;
   const active=useRef<{region:MaterialRegion;index:number;pointer:number;release:()=>void;valid:boolean}|null>(null);
@@ -35,14 +42,16 @@ export function RegionLayer({region,project,order,selected,enabled,snapping,edit
     const target=event.target as unknown as {setPointerCapture:(id:number)=>void;releasePointerCapture:(id:number)=>void};target.setPointerCapture(event.pointerId);
     active.current={region,index,pointer:event.pointerId,valid:true,release:()=>{try{target.releasePointerCapture(event.pointerId);}catch{/* Browser may already have released it. */}}};
   };
-  const move=(event:ThreeEvent<PointerEvent>)=>{const s=active.current;if(!s||s.pointer!==event.pointerId)return;event.stopPropagation();const hit=intersectTerrain(event.ray,site);if(!hit){s.valid=false;return;}
+  const move=(event:ThreeEvent<PointerEvent>)=>{const s=active.current;if(!s||s.pointer!==event.pointerId)return;event.stopPropagation();
+    const planePoint=s.region.elevationMode&&s.region.elevationMode!=='terrain'?event.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-surfaceElevationAt(s.region,site,s.region.points[s.index])-.2),new THREE.Vector3()):null;
+    const hit=planePoint?{point:planePoint}:intersectTerrain(event.ray,site);if(!hit){s.valid=false;return;}
     const points=s.region.points.map(p=>[...p] as PathPoint);points[s.index]=[snapping?snap(hit.point.x):hit.point.x,snapping?snap(hit.point.z):hit.point.z];
     try{editor.preview({type:'replace',entity:{...s.region,points}});s.valid=true;onError('');}catch(error){s.valid=false;onError(error instanceof Error?error.message:'Invalid region.');}
   };
   const up=(event:ThreeEvent<PointerEvent>)=>{const s=active.current;if(!s||s.pointer!==event.pointerId)return;event.stopPropagation();active.current=null;s.valid?editor.commit():editor.cancel();s.release();if(orbit)orbit.enabled=allowed.current;};
-  const surface=useRef<THREE.Mesh>(null),pick:THREE.Mesh['raycast']=(ray,hits)=>{if(!enabled||!surface.current||(region.kind==='plantingRegion'&&!selected))return;const liftedRay=ray.ray.clone();liftedRay.origin.y-=lift;const hit=intersectTerrain(liftedRay,site);if(hit&&lakeDistance(region.points,hit.point.x,hit.point.z)>=0&&hit.distance>=ray.near&&hit.distance<=ray.far)hits.push({...hit,object:surface.current});};
+  const surface=useRef<THREE.Mesh>(null),pick:THREE.Mesh['raycast']=(ray,hits)=>{if(!enabled||!surface.current||(region.kind==='plantingRegion'&&!selected))return;if(region.kind==='materialRegion'&&region.elevationMode&&region.elevationMode!=='terrain'){THREE.Mesh.prototype.raycast.call(surface.current,ray,hits);return;}const liftedRay=ray.ray.clone();liftedRay.origin.y-=lift;const hit=intersectTerrain(liftedRay,site);if(hit&&(surfaces??[region.points]).some(p=>lakeDistance(p,hit.point.x,hit.point.z)>=0)&&hit.distance>=ray.near&&hit.distance<=ray.far){hit.point.y+=lift;hits.push({...hit,object:surface.current});}};
   return <group><mesh ref={surface} geometry={mesh.geometry} material={material} receiveShadow visible={region.kind==='materialRegion'||selected} raycast={pick} userData={{waterCaptureExclude:region.kind==='plantingRegion'}} onClick={e=>{if(enabled&&e.delta<=4){e.stopPropagation();onSelect(region.id);}}}/>
-    {selected&&enabled&&<group userData={{waterCaptureExclude:true}}><RegionDraft points={region.points} site={site}/>{region.points.map((p,i)=><mesh key={i} position={[p[0],groundHeight(...p,site)+0.2,p[1]]} renderOrder={16} onPointerDown={e=>down(e,i)} onPointerMove={move} onPointerUp={up} onLostPointerCapture={cancel} onPointerCancel={cancel}><sphereGeometry args={[0.28,12,8]}/><meshBasicMaterial color="#cbe29a" depthTest={false}/><PointNumber number={i+1}/></mesh>)}</group>}
+    {selected&&enabled&&<group userData={{waterCaptureExclude:true}}><RegionDraft points={region.points} site={site} elevationSurface={region}/>{region.points.map((p,i)=><mesh key={i} position={[p[0],surfaceElevationAt(region,site,p)+0.2,p[1]]} renderOrder={16} onPointerDown={e=>down(e,i)} onPointerMove={move} onPointerUp={up} onLostPointerCapture={cancel} onPointerCancel={cancel}><sphereGeometry args={[0.28,12,8]}/><meshBasicMaterial color="#cbe29a" depthTest={false}/><PointNumber number={i+1}/></mesh>)}</group>}
   </group>;
 }
 

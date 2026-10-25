@@ -53,7 +53,7 @@ describe('editable wall-owned battlements',()=>{
     const duplicated=duplicateAbove(p,'level',8,'upper');expect(getWall(duplicated.project,'upper-part-0').battlements).toEqual(circle().battlements);expect(duplicated.project.entities.filter(e=>e.kind==='wall')).toHaveLength(2);
   });
   it('migrates old files without adding patterns and round-trips authored patterns through both storage forms',async()=>{
-    const w=circle(),p=scene(w),{battlements,...oldWall}=w,old={...p,version:22,entities:[level,oldWall]},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(33);expect(parseProject(old).entities).toEqual([level,oldWall]);expect(old).toEqual(snapshot);
+    const w=circle(),p=scene(w),{battlements,...oldWall}=w,old={...p,version:22,entities:[level,oldWall]},snapshot=structuredClone(old);expect(parseProject(old).version).toBe(39);expect(parseProject(old).entities).toEqual([level,oldWall]);expect(old).toEqual(snapshot);
     expect(()=>parseProject({...old,entities:[level,w]})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);
   });
 });

@@ -22,8 +22,9 @@ export function PathDrawingPanel({points,width,surface,redrawing,error,snapping,
       {!characterName && <Field>Surface<SelectInput aria-label="Path surface" value={surface} onValueChange={value => onSurface(value as Path['surface'])}>
         <SelectOption value="gravel">Gravel</SelectOption><SelectOption value="paving">Stone paving</SelectOption><SelectOption value="timber">Timber</SelectOption>
       </SelectInput></Field>}
-      <Field variant="checkbox"><CheckboxInput aria-label="Snap drawing path" checked={snapping} onChange={event => onSnapping(event.target.checked)}/>Snap to grid and building edges</Field>
+      <Field variant="checkbox"><CheckboxInput aria-label="Snap drawing path" checked={snapping} onChange={event => onSnapping(event.target.checked)}/>Snap to grid, paths and building edges</Field>
       <FieldMessage>{characterName ? 'Only this person follows the route. The corridor is a guide, with no surface added to the terrain.' : 'People have their own walking routes. This path adds a landscape surface.'}</FieldMessage>
+      {!characterName&&<FieldMessage>Draw up to 16 separate paths. New paths follow terrain; set fixed elevations or Grade terrain in Properties after finishing. Surfaces join at matching elevations. Courtyards supply the paving inside their boundaries. Snapping places points without attaching them to future edits.</FieldMessage>}
     </InspectorSection>
     <InspectorSection sectionId="path-drawing-progress" title="Drawing">
       <PropertyRow><span>Points</span><strong>{points.length} / 16</strong></PropertyRow>

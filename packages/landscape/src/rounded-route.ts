@@ -1,11 +1,11 @@
 import {pathIssue,type PathPoint} from './path';
 import type {TerrainBounds} from './index';
 
-export type RoundedRoute={points:PathPoint[];width:number;cornerRounding?:number[]};
+export type RoundedRoute={points:PathPoint[];width:number;cornerRounding?:number[];closed?:boolean};
 /** Circular tangent fillets. Neighboring corners each use at most 45% of a
  * segment, leaving a straight connection; inner corridor edges never invert. */
 export function routeCorner(route:RoundedRoute,index:number){
-  const {points,width}=route,a=points[index-1],b=points[index],c=points[index+1];
+  const {points,width}=route,n=points.length,a=points[route.closed?(index+n-1)%n:index-1],b=points[index],c=points[route.closed?(index+1)%n:index+1];
   if(!a||!b||!c)return null;
   const incoming=[b[0]-a[0],b[1]-a[1]],outgoing=[c[0]-b[0],c[1]-b[1]],before=Math.hypot(...incoming),after=Math.hypot(...outgoing);
   if(before<1e-6||after<1e-6)return null;
@@ -20,6 +20,18 @@ export function routeCorner(route:RoundedRoute,index:number){
 }
 
 export function roundedRoutePoints(route:RoundedRoute):PathPoint[]{
+  if(route.closed){
+    if(route.points.length<3)return route.points;
+    const result:PathPoint[]=[],push=(p:PathPoint)=>{if(!result.length||Math.hypot(p[0]-result.at(-1)![0],p[1]-result.at(-1)![1])>.001)result.push(p);};
+    for(let index=0;index<route.points.length;index++){
+      const corner=routeCorner(route,index);if(!corner?.radius){push(route.points[index]);continue;}
+      push(corner.start);const angle=Math.atan2(corner.start[1]-corner.center[1],corner.start[0]-corner.center[0]);
+      const steps=Math.min(64,Math.max(2,Math.ceil(Math.abs(corner.sweep)/(Math.PI/18)),Math.ceil(corner.radius*Math.abs(corner.sweep)/.75)));
+      for(let step=1;step<steps;step++){const theta=angle+corner.sweep*step/steps;push([corner.center[0]+corner.radius*Math.cos(theta),corner.center[1]+corner.radius*Math.sin(theta)]);}
+      push(corner.end);
+    }
+    push(result[0]);return result;
+  }
   if(route.points.length<3||!route.cornerRounding?.some(value=>value>0))return route.points;
   const result:PathPoint[]=[route.points[0]],push=(point:PathPoint)=>{if(Math.hypot(point[0]-result.at(-1)![0],point[1]-result.at(-1)![1])>.001)result.push(point);};
   for(let index=1;index<route.points.length-1;index++){

@@ -50,7 +50,7 @@ describe('shared editable rectangular / arched wall openings',()=>{
     const drag=pasteSelection(p,{kind:'opening',opening:door},w.id,'drag',1,{worldDelta:[0,4],snapping:false});expect(()=>applyCommand(p,drag.command)).not.toThrow();
   });
   it('upgrades format 19 unchanged and rejects arch fields masquerading as old format data',()=>{
-    const p=scene(ring()),legacy={...p,version:19},snapshot=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...p,version:33});expect(legacy).toEqual(snapshot);
+    const p=scene(ring()),legacy={...p,version:19},snapshot=structuredClone(legacy);expect(parseProject(legacy)).toEqual({...p,version:39});expect(legacy).toEqual(snapshot);
     expect(()=>parseProject({...legacy,entities:[level,{...ring(),openings:[door]}]})).toThrow();expect(openingSchema.safeParse({...door,archRise:4}).success).toBe(false);
     expect(openingAtPoint(ring(),level,world(0,5),{...door,archRise:NaN,snapping:false},'invalid').opening).toBeNull();
   });

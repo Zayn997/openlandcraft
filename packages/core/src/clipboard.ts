@@ -123,6 +123,7 @@ export function pasteSelection(project: Project, clipboard: EditorClipboard, sel
     if (isBuildingPart(entity) && !idMap.has(source.parentId)) displaced ||= Math.hypot(...shift)>0.001;
     if ('position' in entity) entity.position = [entity.position[0] + worldShift[0], entity.position[1], entity.position[2] + worldShift[1]];
     if(entity.kind==='instance'&&entity.walkingRoute)entity.walkingRoute={...entity.walkingRoute,points:entity.walkingRoute.points.map(p=>[p[0]+worldShift[0],p[1]+worldShift[1]])};
+    if(entity.kind==='lake'&&entity.holes)entity.holes=entity.holes.map(hole=>hole.map(p=>[p[0]+worldShift[0],p[1]+worldShift[1]]));
     if ('points' in entity) entity.points = entity.points.map(p => entity.kind === 'river' ? [p[0]+worldShift[0],p[1],p[2]!+worldShift[1]] : [p[0]+worldShift[0],p[1]+worldShift[1]]) as typeof entity.points;
     if (entity.kind === 'wall') {
       entity.junctions = remapWallJunctions(entity,idMap);

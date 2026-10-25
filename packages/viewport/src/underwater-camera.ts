@@ -1,5 +1,5 @@
 import type { Lake, Ocean, Project } from '@openlandcraft/core';
-import { lakeDistance } from '@openlandcraft/landscape';
+import { lakeWaterDistance } from '@openlandcraft/landscape';
 
 /** Find real open water with headroom above the bed; never invent a submerged pose. */
 export function underwaterCamera(site:Project['site'],ocean:Ocean,lakes:Pick<Lake,'visible'|'points'>[] = []) {
@@ -10,7 +10,7 @@ export function underwaterCamera(site:Project['site'],ocean:Ocean,lakes:Pick<Lak
     const px=x/(columns-1)*site.width-site.width/2,pz=z/(rows-1)*site.depth-site.depth/2;
     const depth=ocean.level-heights[z*columns+x];
     if(depth<Math.max(1.2,ocean.amplitude*2+0.6)||Math.abs(px)>site.width/2-2||Math.abs(pz)>site.depth/2-2)continue;
-    if(lakes.some(lake=>lake.visible&&lakeDistance(lake.points,px,pz)>-0.8))continue;
+    if(lakes.some(lake=>lake.visible&&lakeWaterDistance(lake,px,pz)>-0.8))continue;
     const rank=(px-site.width*0.25)**2+pz*pz+50*(depth-2.5)**2;
     if(rank>=score)continue;score=rank;
     position=[px,ocean.level-Math.min(depth-0.4,Math.max(1.2,ocean.amplitude*1.8+0.3)),pz];

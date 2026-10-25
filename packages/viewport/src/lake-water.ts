@@ -1,4 +1,4 @@
-import { lakeBounds, lakeDistance, sampleHeight } from '@openlandcraft/landscape';
+import { lakeBounds, lakeWaterDistance, sampleHeight } from '@openlandcraft/landscape';
 import type { Lake, Project } from '@openlandcraft/core';
 import { coastalWave } from './coastal-waves';
 import {HistoryWaves,historyWaveReference} from './history-wave';
@@ -21,7 +21,7 @@ export class LakeHistory {
     this.waves=new HistoryWaves(n);
     for(let r=0;r<this.rows;r++)for(let c=0;c<this.columns;c++){
       const i=r*this.columns+c,x=this.bounds.minX+c/(this.columns-1)*this.bounds.width,z=this.bounds.minZ+r/(this.rows-1)*this.bounds.depth;
-      this.distances[i]=lakeDistance(lake.points,x,z);this.heights[i]=sampleHeight(site.terrain,site,x,z);
+      this.distances[i]=lakeWaterDistance(lake,x,z);this.heights[i]=sampleHeight(site.terrain,site,x,z);
     }
   }
   clearHistory(){this.foam.fill(0);this.wet.fill(0);this.pixels.fill(0);this.remainder=0;}

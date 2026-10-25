@@ -17,7 +17,10 @@ type Props = {
   onRegions: () => void;
   onWater: () => void;
   onDrawPath: () => void;
+  onDrawCourtyard: () => void;
   onRepeat: () => void;
+  onMirror: () => void;
+  onHedge: () => void;
   onTower: () => void;
   onAddOcean: () => void;
   onPlaceAsset: (asset: Asset) => void;
@@ -27,9 +30,10 @@ type Props = {
 /** Editor commands remain in App; this component only presents the creation menu. */
 export function CreationMenu({
   project, busy, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
-  onRegions, onWater, onDrawPath, onRepeat, onTower, onAddOcean, onPlaceAsset, onRemoveAsset,
+  onRegions, onWater, onDrawPath, onDrawCourtyard, onRepeat, onMirror, onHedge, onTower, onAddOcean, onPlaceAsset, onRemoveAsset,
 }: Props) {
-  const hasPath = project.entities.some(entity => entity.kind === 'path');
+  const pathsFull = project.entities.filter(entity => entity.kind === 'path').length>=16;
+  const regionsFull = project.entities.filter(entity => entity.kind === 'materialRegion'||entity.kind==='plantingRegion').length>=8;
   const hasOcean = project.entities.some(entity => entity.kind === 'ocean');
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
@@ -52,8 +56,11 @@ export function CreationMenu({
       <DropdownMenuGroup>
         <DropdownMenuLabel>Landscape</DropdownMenuLabel>
         <DropdownMenuItem onSelect={onRegions}><Leaf />Landscape regions</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onMirror}><Focus />Mirror / symmetry</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||project.entities.filter(e=>e.kind==='hedge').length>=32} onSelect={onHedge}><Leaf />Draw clipped hedge</DropdownMenuItem>
         <DropdownMenuItem onSelect={onWater}><Droplets />Water System</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy} onSelect={onDrawPath}><Route />{hasPath ? 'Redraw path' : 'Draw path'}</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||pathsFull} onSelect={onDrawPath}><Route />Draw path</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||regionsFull} onSelect={onDrawCourtyard}><Layers />Draw courtyard</DropdownMenuItem>
         <DropdownMenuItem disabled={hasOcean} onSelect={onAddOcean}><Waves />Add ocean</DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />

@@ -1,4 +1,4 @@
-import { groundHeight, nearestWalkNode, walkPatrol, type GroundRoute, type Project } from '@openlandcraft/core';
+import { walkingHeight, nearestWalkNode, walkPatrol, type GroundRoute, type Project } from '@openlandcraft/core';
 import { groundCharacterPose } from './ground-character-motion';
 import { PATH_LIFT } from './path-geometry';
 import {startWork,endWork} from './frame-profile';
@@ -50,7 +50,7 @@ export class PedestrianSimulation {
         });
         if (index >= 0) {
           pose.x = graph.nodes[index].x; pose.z = graph.nodes[index].z;
-          pose.y = groundHeight(pose.x,pose.z,project.site)+route.entity.position[1]+PATH_LIFT;
+          pose.y = walkingHeight(project,pose.x,pose.z)+route.entity.position[1]+PATH_LIFT;
           agent.waypoints = walkPatrol(graph,index,agent.direction);
           if (agent.waypoints.length < 2) { agent.direction *= -1; agent.waypoints = walkPatrol(graph,index,agent.direction); }
           const next = graph.nodes[agent.waypoints[1]];
@@ -92,7 +92,7 @@ export class PedestrianSimulation {
     const agent = this.agents.get(id); if (!agent?.visible) return undefined;
     const a = agent.previous, b = agent.pose, t = Math.max(0,Math.min(1,this.accumulator/STEP));
     const x = a.x+(b.x-a.x)*t, z = a.z+(b.z-a.z)*t;
-    return {x,z,y:agent.route.path ? groundHeight(x,z,this.project.site)+agent.route.entity.position[1]+PATH_LIFT : a.y+(b.y-a.y)*t,
+    return {x,z,y:agent.route.path ? walkingHeight(this.project,x,z)+agent.route.entity.position[1]+PATH_LIFT : a.y+(b.y-a.y)*t,
       yaw:a.yaw+angleDifference(b.yaw,a.yaw)*t,pitch:a.pitch+(b.pitch-a.pitch)*t,
       walkTime:a.walkTime+(b.walkTime-a.walkTime)*t,idleTime:a.idleTime+(b.idleTime-a.idleTime)*t,walkWeight:a.walkWeight+(b.walkWeight-a.walkWeight)*t};
   }
@@ -183,7 +183,7 @@ export class PedestrianSimulation {
       pose.idleTime = this.time+agent.route.seed*3;
       const weight = moved > 1e-5 ? Math.min(1,agent.speed/(agent.route.speed*0.65)) : 0;
       pose.walkWeight += (weight-pose.walkWeight)*(1-Math.exp(-dt*10));
-      pose.y = groundHeight(pose.x,pose.z,this.project.site)+agent.route.entity.position[1]+PATH_LIFT;
+      pose.y = walkingHeight(this.project,pose.x,pose.z)+agent.route.entity.position[1]+PATH_LIFT;
     }
   }
 }

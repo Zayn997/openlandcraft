@@ -1,6 +1,10 @@
 import { z } from 'zod';
 export * from './river';
 export * from './path';
+export * from './path-network';
+export * from './surface-elevation';
+export * from './bridge';
+export * from './hedge';
 export * from './rounded-route';
 export * from './lake';
 

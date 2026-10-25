@@ -1,15 +1,16 @@
 import {footprint} from './architecture';
 import {curvedWallDistance} from './curved-walls';
 import {wallWalkContains} from './wall-walks';
-import {lakeDistance,pointSegmentDistance,polygonArea,pathStrips,roundedRoutePoints,sampleRiver,type PathPoint} from '@openlandcraft/landscape';
+import {hedgeStrips,lakeDistance,lakeWaterDistance,pointSegmentDistance,polygonArea,pathStrips,roundedRoutePoints,sampleRiver,type PathPoint} from '@openlandcraft/landscape';
 import {groundHeight,parseProject,type Entity,type Instance,type MaterialRegion,type PlantingRegion,type Project,type Region} from './model';
 import {evaluateProject} from './surface';
 
-export const REGION_SURFACES={grass:{color:'#75875b',roughness:0.95},sand:{color:'#c8b992',roughness:0.95},rock:{color:'#898b81',roughness:0.85},gravel:{color:'#b4a48a',roughness:0.98}} as const;
-export function createRegion(project:Project,type:'material'|'planting',points?:PathPoint[]):Region {
+export const REGION_SURFACES={grass:{color:'#75875b',roughness:0.95},sand:{color:'#c8b992',roughness:0.95},rock:{color:'#898b81',roughness:0.85},gravel:{color:'#b4a48a',roughness:0.98},paving:{color:'#a5a89f',roughness:0.96}} as const;
+export function createRegion(project:Project,type:'material'|'planting'|'courtyard',points?:PathPoint[]):Region {
   const x=-project.site.width*0.3,z=project.site.depth*0.25,r=Math.min(10,project.site.width*0.12,project.site.depth*0.12);
   const common={id:crypto.randomUUID(),parentId:'site' as const,visible:true,points:points??[[x-r,z-r],[x+r,z-r],[x+r,z+r],[x-r,z+r]] as PathPoint[]};
   if(type==='material')return {...common,kind:'materialRegion',name:'Surface region',surface:'gravel',...REGION_SURFACES.gravel,detailScale:1};
+  if(type==='courtyard')return {...common,kind:'materialRegion',name:'Paved courtyard',surface:'paving',...REGION_SURFACES.paving,detailScale:1};
   if(!project.assets.length)throw new Error('Place a plant from Assets or import a model before creating a planting region.');
   return {...common,kind:'plantingRegion',name:'Planting region',assetId:project.assets[0].id,seed:42,density:8,scaleMin:0.7,scaleMax:1.2,spacing:2.5,clearance:1,exclusions:{water:true,paths:true,buildings:true}};
 }
@@ -18,12 +19,16 @@ export function createRegion(project:Project,type:'material'|'planting',points?:
 export function plantingObstacle(project:Project,region:Pick<PlantingRegion,'clearance'|'exclusions'>):(x:number,z:number)=>boolean {
   const tests:((x:number,z:number)=>boolean)[]=[],margin=region.clearance;
   for(const e of project.entities){
-    if(region.exclusions.water&&e.kind==='lake')tests.push((x,z)=>lakeDistance(e.points,x,z)>=-e.bank-margin);
+
+    if(region.exclusions.water&&e.kind==='lake')tests.push((x,z)=>lakeWaterDistance(e,x,z)>=-e.bank-margin);
+
     if(region.exclusions.water&&e.kind==='ocean')tests.push((x,z)=>groundHeight(x,z,project.site)<=e.level+e.amplitude+0.1+margin*0.1);
+    if(e.kind==='hedge'){const strips=hedgeStrips(e);tests.push((x,z)=>strips.some(s=>lakeDistance(s,x,z)>=-margin));}
     if(region.exclusions.water&&e.kind==='river'){
       const samples=sampleRiver(e.points);tests.push((x,z)=>samples.some((p,i)=>i>0&&pointSegmentDistance([x,z],[samples[i-1].x,samples[i-1].z],[p.x,p.z])<=e.width/2+e.bank+margin));
     }
     if(region.exclusions.paths&&e.kind==='path'){const strips=pathStrips({...e,points:roundedRoutePoints(e)});tests.push((x,z)=>strips.some(p=>lakeDistance(p,x,z)>=-margin));}
+    if(region.exclusions.paths&&e.kind==='materialRegion'&&e.surface==='paving')tests.push((x,z)=>lakeDistance(e.points,x,z)>=-margin);
     if(region.exclusions.buildings&&(e.kind==='block'||e.kind==='wall'||e.kind==='slab'||e.kind==='roof')){
       const origin=e.kind==='block'?e:project.entities.find(p=>p.kind==='level'&&p.id===e.parentId);
       if(!origin||!('position' in origin)||!('rotation' in origin))continue;

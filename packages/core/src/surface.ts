@@ -2,6 +2,7 @@ import { carveLake, carveRiver, type Heightfield } from '@openlandcraft/landscap
 import { groundHeight, type Lake, type Project, type River } from './model';
 import { WATER_APPEARANCE_DEFAULTS } from './materials';
 import { RIVER_WATER_DEFAULTS } from './river-water';
+import {gradedTerrain} from './site-grading';
 
 const evaluated = new WeakMap<Heightfield, { river: River; width: number; depth: number; field: Heightfield }>();
 function sameChannel(a: River, b: River) {
@@ -18,15 +19,20 @@ function evaluateRiver(project: Project): Project {
   return { ...project, site: { ...project.site, terrain: cached.field } };
 }
 const lakeFields=new WeakMap<Heightfield,{key:string;field:Heightfield}>();
-/** Deterministic order: authored ground → river → lake → following objects/paths. */
+const sourceFields=new WeakMap<Heightfield,Heightfield>();
+/** Deterministic order: authored ground → site grading → river → lake → following objects. */
 export function evaluateProject(project:Project):Project {
+  const original=sourceFields.get(project.site.terrain);if(original)project={...project,site:{...project.site,terrain:original}};
+  const authoredField=project.site.terrain;
+  const field=gradedTerrain(project);if(field!==project.site.terrain)project={...project,site:{...project.site,terrain:field}};
   const hidden=new Set(project.entities.filter(e=>e.kind==='plantingRegion'&&!e.visible).map(e=>e.id));
   if(hidden.size)project={...project,entities:project.entities.map(e=>e.kind==='instance'&&e.regionId&&hidden.has(e.regionId)?{...e,visible:false}:e)};
   const result=evaluateRiver(project),lake=result.entities.find((e):e is Lake=>e.kind==='lake'&&e.visible);
-  if(!lake)return result;
-  const key=JSON.stringify([result.site.width,result.site.depth,lake.points,lake.level,lake.depth,lake.bank]);
+  if(!lake){if(result.site.terrain!==authoredField)sourceFields.set(result.site.terrain,authoredField);return result;}
+  const key=JSON.stringify([result.site.width,result.site.depth,lake.points,lake.holes,lake.level,lake.depth,lake.bank]);
   let cached=lakeFields.get(result.site.terrain);
   if(!cached||cached.key!==key){cached={key,field:carveLake(result.site.terrain,result.site,lake)};lakeFields.set(result.site.terrain,cached);}
+  if(cached.field!==authoredField)sourceFields.set(cached.field,authoredField);
   return {...result,site:{...result.site,terrain:cached.field}};
 }
 export function createRiver(project: Project): River {

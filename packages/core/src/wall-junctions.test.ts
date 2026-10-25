@@ -109,7 +109,7 @@ describe('editable wall junctions',()=>{
   it('migrates version 14 without inventing T joins in old overlapping geometry',()=>{
     const p=scene(),w={...branch(p),junctions:undefined};delete w.junctions;
     const old={...p,version:14,entities:[...p.entities,w]},snapshot=structuredClone(old);
-    const migrated=parseProject(old);expect(migrated.version).toBe(33);expect(migrated.entities).toEqual(old.entities);expect(old).toEqual(snapshot);
+    const migrated=parseProject(old);expect(migrated.version).toBe(39);expect(migrated.entities).toEqual(old.entities);expect(old).toEqual(snapshot);
     expect(wall(migrated,w.id).junctions).toBeUndefined();
     expect(()=>parseProject({...p,entities:[...p.entities,{...w,junctions:{end:'missing'}}]})).toThrow('junction');
   });

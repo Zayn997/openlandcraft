@@ -53,7 +53,7 @@ describe('persistent circular tower roof attachments',()=>{
     p.layers.push({id:'locked',name:'Locked',visible:true,locked:true,parentId:null,color:'#333333'});p.objectLayers.roof='locked';const locked=new Editor(p),snapshot=locked.getSnapshot();expect(()=>locked.execute({type:'replace',entity:updateCurvedWall(wall,{radius:5})},'Locked roof')).toThrow('Unlock');expect(locked.getSnapshot()).toBe(snapshot);expect(()=>locked.execute({type:'remove',id:wall.id},'Delete host')).toThrow('Unlock');
   });
   it('leaves format-21 roofs independent and rejects missing, cross-level or inconsistent persisted host references',()=>{
-    const independent=setConicalRoofTower(roof(),null),p=scene(tower(),independent),old={...p,version:21},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...p,version:33});expect(old).toEqual(snapshot);
+    const independent=setConicalRoofTower(roof(),null),p=scene(tower(),independent),old={...p,version:21},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...p,version:39});expect(old).toEqual(snapshot);
     expect(()=>parseProject({...old,entities:[level,tower(),roof()]})).toThrow();expect(()=>scene({...roof(),cone:{...roof().cone!,wallId:'missing'}})).toThrow('circular');expect(()=>scene(tower(),{...roof(),elevation:8})).toThrow('follow');
     const other:Level={...level,id:'other'};expect(()=>parseProject({...p,entities:[level,other,tower(),{...roof(),parentId:'other'}]})).toThrow('same level');
   });

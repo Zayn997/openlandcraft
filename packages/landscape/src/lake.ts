@@ -2,7 +2,7 @@ import { MIN_HEIGHT, type Heightfield, type TerrainBounds } from './index';
 import { polygonArea, type PathPoint } from './path';
 import { sampleRiver, type RiverShape } from './river';
 
-export type LakeShape = { points: PathPoint[]; level: number; depth: number; bank: number };
+export type LakeShape = { points: PathPoint[]; holes?: PathPoint[][]; level: number; depth: number; bank: number };
 export function pointSegmentDistance(p: PathPoint, a: PathPoint, b: PathPoint) {
   const dx=b[0]-a[0], dz=b[1]-a[1], t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dz)/(dx*dx+dz*dz||1)));
   return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dz);
@@ -26,6 +26,10 @@ export function lakeBounds(lake:Pick<LakeShape,'points'|'bank'>) {
   const minX=Math.min(...lake.points.map(p=>p[0]))-lake.bank,minZ=Math.min(...lake.points.map(p=>p[1]))-lake.bank;
   return {minX,minZ,width:Math.max(...lake.points.map(p=>p[0]))+lake.bank-minX,depth:Math.max(...lake.points.map(p=>p[1]))+lake.bank-minZ};
 }
+/** Signed distance to the water, including retained dry islands. */
+export function lakeWaterDistance(lake:Pick<LakeShape,'points'|'holes'>,x:number,z:number){
+  return Math.min(lakeDistance(lake.points,x,z),...(lake.holes??[]).map(hole=>-lakeDistance(hole,x,z)));
+}
 export function lakeIssue(lake:LakeShape,bounds:TerrainBounds,field:Pick<Heightfield,'columns'|'rows'>):string|null {
   const {points,bank,level,depth}=lake,cell=Math.max(bounds.width/(field.columns-1),bounds.depth/(field.rows-1));
   if(level-depth<MIN_HEIGHT)return 'Raise the lake level or reduce depth to keep the basin above -9 m.';
@@ -44,14 +48,28 @@ export function lakeIssue(lake:LakeShape,bounds:TerrainBounds,field:Pick<Heightf
       if(segmentDistance(a,b,points[j],points[(j+1)%points.length])<Math.max(0.5,cell))return 'Lake edges cross or are too close. Separate the boundary edges.';
     }
   }
-  return perimeter>400?'Keep the lake perimeter at most 400 m.':null;
+  if(perimeter>400)return 'Keep the lake perimeter at most 400 m.';
+  const holes=lake.holes??[];
+  for(let i=0;i<holes.length;i++){
+    const hole=holes[i],issue=lakeIssue({...lake,points:hole,holes:undefined},bounds,field);
+    if(issue)return `Dry island ${i+1}: ${issue}`;
+    const gap=Math.max(2*bank+cell,3);
+    if(hole.some(p=>lakeDistance(points,...p)<gap))return 'Keep a water channel at least two bank blends plus one terrain cell wide around each island.';
+    for(let a=0;a<hole.length;a++)for(let b=0;b<points.length;b++)if(segmentDistance(hole[a],hole[(a+1)%hole.length],points[b],points[(b+1)%points.length])<gap)return 'Island edges must stay inside the outer shoreline with room for both banks.';
+    for(let j=0;j<i;j++){
+      if(hole.some(p=>lakeDistance(holes[j],...p)>=0)||holes[j].some(p=>lakeDistance(hole,...p)>=0))return 'Dry islands must be separate, without nesting.';
+      for(let a=0;a<hole.length;a++)for(let b=0;b<holes[j].length;b++)if(segmentDistance(hole[a],hole[(a+1)%hole.length],holes[j][b],holes[j][(b+1)%holes[j].length])<gap)return 'Leave room for water and both banks between dry islands.';
+    }
+  }
+  if(area-holes.reduce((sum,hole)=>sum+polygonArea(hole),0)<Math.max(16,cell*cell*16))return 'The moat needs at least 16 terrain cells of water.';
+  return null;
 }
 export function lakeRiverOverlap(lake:LakeShape,river:RiverShape) {
   const samples=sampleRiver(river.points),reach=river.width/2+river.bank+lake.bank;
   for(let i=1;i<samples.length;i++) {
     const a:PathPoint=[samples[i-1].x,samples[i-1].z],b:PathPoint=[samples[i].x,samples[i].z];
-    if(lakeDistance(lake.points,...a)>=0)return true;
-    for(let j=0;j<lake.points.length;j++)if(segmentDistance(a,b,lake.points[j],lake.points[(j+1)%lake.points.length])<=reach)return true;
+    if(lakeWaterDistance(lake,...a)>=0)return true;
+    for(const loop of [lake.points,...lake.holes??[]])for(let j=0;j<loop.length;j++)if(segmentDistance(a,b,loop[j],loop[(j+1)%loop.length])<=reach)return true;
   }
   return false;
 }
@@ -62,7 +80,7 @@ export function carveLake(field:Heightfield,bounds:TerrainBounds,lake:LakeShape)
   const minC=Math.max(0,Math.floor((box.minX+bounds.width/2)/dx)),maxC=Math.min(field.columns-1,Math.ceil((box.minX+box.width+bounds.width/2)/dx));
   const minR=Math.max(0,Math.floor((box.minZ+bounds.depth/2)/dz)),maxR=Math.min(field.rows-1,Math.ceil((box.minZ+box.depth+bounds.depth/2)/dz));
   for(let r=minR;r<=maxR;r++)for(let c=minC;c<=maxC;c++){
-    const index=r*field.columns+c,base=field.heights[index],distance=lakeDistance(lake.points,c*dx-bounds.width/2,r*dz-bounds.depth/2);
+    const index=r*field.columns+c,base=field.heights[index],distance=lakeWaterDistance(lake,c*dx-bounds.width/2,r*dz-bounds.depth/2);
     if(distance<=-lake.bank)continue;
     const target=distance>=0?lake.level-lake.depth*smooth(distance/lake.bank):lake.level+(base-lake.level)*smooth(-distance/lake.bank);
     heights[index]=Math.max(MIN_HEIGHT,Math.min(base,target));

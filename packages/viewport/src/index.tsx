@@ -19,6 +19,9 @@ import {OpeningSelection, type OpeningSelectionProps} from './opening-selection'
 import {OpeningEdit, type OpeningEditProps} from './opening-edit';
 import {ArchitectureDrawing} from './architecture-drawing';
 import {CurvedWallDrawing} from './curved-wall-drawing';
+import {HedgeLayer,HedgeDraft} from './hedge';
+import {MirrorAxis} from './mirror-axis';
+import type {MirrorRule} from '@openlandcraft/core';
 import {RepeatDrawing,type RepeatDrawingProps} from './repeat-drawing';
 import {ConicalRoofDrawing} from './conical-roof-drawing';
 import {StairsDrawing} from './stairs-drawing';
@@ -29,8 +32,8 @@ import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useSt
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { evaluateProject, isBirdAsset, isFishAsset, isGroundCharacterAsset, fishSchools, isRegion, groundHeight, instancePosition, type Block, type Project, type Editor, type BuildingPart, type Instance } from '@openlandcraft/core';
-import { TerrainStroke, roundedRoutePoints, type BrushSettings, type RiverPoint, type PathPoint } from '@openlandcraft/landscape';
+import { evaluateProject, gardenSurfaceHeights, isBirdAsset, isFishAsset, isGroundCharacterAsset, fishSchools, isRegion, groundHeight, instancePosition, type Block, type Project, type Editor, type BuildingPart, type Instance } from '@openlandcraft/core';
+import { TerrainStroke, roundedRoutePoints, pathNetworkSurfaces, courtyardNetworkSurfaces, surfaceElevationAt, type BrushSettings, type RiverPoint, type PathPoint } from '@openlandcraft/landscape';
 import { RiverDraft, RiverLayer } from './river';
 import { PathDraft, PathLayer } from './path';
 import { useDrawingClick } from './drawing-gesture';
@@ -57,7 +60,9 @@ export type ViewportMetrics = { fps: number; calls: number; triangles: number; r
   buffer?:{width:number;height:number;dpr:number};
 };
 type Props = {
+  hedgeDrawing?:import('@openlandcraft/core').Hedge;
   towerDrawing?:TowerDrawingProps;
+  mirrorAxis?:Pick<MirrorRule,'start'|'end'>;
   repeatDrawing?:RepeatDrawingProps;
   plantAsset?: import('@openlandcraft/core').Asset | null;
   plantGrowth?: ReadonlyMap<string, number>;
@@ -78,12 +83,12 @@ type Props = {
   grid: boolean; playing: boolean; quality: 'low' | 'high';
   view: CameraView; projection:CameraProjection;onNavigationView: (view: CameraView) => void; frameToken: number; frameCancelToken: number;
   onMetrics: (metrics: ViewportMetrics) => void;
-  editor: Editor; tool: 'select' | 'tower' | 'repeat' | 'plant' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'stairs' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
+  editor: Editor; tool: 'select' | 'hedge' | 'tower' | 'repeat' | 'plant' | 'terrain' | 'building' | 'wall' | 'floor' | 'roof' | 'stairs' | 'door' | 'window' | 'opening-edit' | 'wall-edit' | 'outline-edit' | 'river' | 'path' | 'lake' | 'region'; brush: BrushSettings;
   onStrokeTime: (milliseconds: number) => void;
   onGroundPoint: (x: number, z: number) => void; onError: (message: string) => void;
   transformMode: TransformMode; snapping: boolean;
   architectureDrawing?: {level: import('@openlandcraft/core').Level; kind: 'wall'|'floor'|'roof'|'stairs'; offset: number; thickness: number; wallShape:import('@openlandcraft/core').WallShape; height:number; clockwise:boolean;roofShape:import('@openlandcraft/core').RoofShape;roofHeight:number;roofOverhang:number;tower?:import('@openlandcraft/core').Wall;stairDimensions:import('@openlandcraft/core').StairDrawingDimensions;stairShape:import('@openlandcraft/core').StairShape;stairTower?:import('@openlandcraft/core').Wall};
-  wallDraft:PathPoint[];regionDraft:PathPoint[]; riverDraft: RiverPoint[]; pathDraft: PathPoint[]; pathDraftWidth?:number; lakeDraft:PathPoint[];lakeDraftLevel:number;
+  wallDraft:PathPoint[];regionDraft:PathPoint[]; riverDraft: RiverPoint[]; pathDraft: PathPoint[]; pathDraftWidth?:number; pathDraftSurface?:import('@openlandcraft/core').Path; lakeDraft:PathPoint[];lakeDraftLevel:number;
   routeCornerControls?:ReactNode;draftCornerControls?:ReactNode;pathDraftRounding?:number[];draftRouteAnchor?:number|null;onDraftRouteAnchor?:(index:number)=>void;selectedRouteAnchor?:number|null;onRouteAnchor?:(index:number)=>void;
   waterPreview: { reset: number; step: number; riverReset:number; riverStep:number; lakeReset:number; lakeStep:number };
 };
@@ -108,7 +113,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
   const pendingInputTime = useRef<number | null>(null);
   const previewReady = useRef(false);
   const { gl } = useThree();
-  const drawingClick=useDrawingClick(gl.domElement,tool==='path');
+  const drawingClick=useDrawingClick(gl.domElement,tool==='path'||tool==='hedge');
   const geometry = useMemo(() => {
     const { width, depth } = project.site;
     const geometry = new THREE.PlaneGeometry(width, depth, project.site.terrain.columns - 1, project.site.terrain.rows - 1);
@@ -229,7 +234,7 @@ function Terrain({ project, editor, tool, brush, onStrokeTime, onGroundPoint, on
   }, [cursor, brush.radius, tool, project.site.terrain]);
   useEffect(() => () => ring?.dispose(), [ring]);
   return <group>
-    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={painting ? paint.cancel : cancel} onLostPointerCapture={painting ? paint.cancel : cancel} onPointerOut={() => { paint.out(); if (!stroke.current) setCursor(null); }} onClick={(event) => { if(stairAttachment){event.stopPropagation();if(stairAttachment.end==='bottom'&&stairAttachment.surface==='terrain'&&event.button===0&&event.delta<=4)stairAttachment.onPick([event.point.x,event.point.z]);return;} if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if (((tool === 'plant' && !painting) || tool === 'tower' || tool === 'repeat' || tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.button === 0 && event.delta <= 4 && drawingClick(event.button)) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
+    <mesh ref={mesh} geometry={geometry} receiveShadow raycast={(raycaster, hits) => { const hit = intersectTerrain(raycaster.ray, project.site); if (hit && hit.distance >= raycaster.near && hit.distance <= raycaster.far && mesh.current) hits.push({ ...hit, object: mesh.current }); }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={painting ? paint.cancel : cancel} onLostPointerCapture={painting ? paint.cancel : cancel} onPointerOut={() => { paint.out(); if (!stroke.current) setCursor(null); }} onClick={(event) => { if(stairAttachment){event.stopPropagation();if(stairAttachment.end==='bottom'&&stairAttachment.surface==='terrain'&&event.button===0&&event.delta<=4)stairAttachment.onPick([event.point.x,event.point.z]);return;} if (tool === 'terrain'||tool==='door'||tool==='window'||(tool==='opening-edit'||tool==='wall-edit'||tool==='outline-edit')) event.stopPropagation(); if (((tool === 'plant' && !painting) || tool === 'tower' || tool === 'hedge' || tool === 'repeat' || tool === 'building' || tool === 'river' || tool === 'path' || tool === 'lake' || tool === 'region') && event.button === 0 && event.delta <= 4 && drawingClick(event.button)) { event.stopPropagation(); onGroundPoint(event.point.x, event.point.z); } else if (tool === 'select' && event.delta <= 4) { event.stopPropagation(); onSelect(null); } }}>
       <CoastalTerrainMaterial site={project.site} />
     </mesh>
     {ring && <lineLoop geometry={ring} raycast={() => undefined} renderOrder={10} userData={{waterCaptureExclude:true}}><lineBasicMaterial color={brush.kind === 'lower' ? '#e7b0a1' : '#e4ffb2'} depthTest={false} /></lineLoop>}
@@ -378,8 +383,8 @@ function CameraRig({ project, selectedId, view, projection, onNavigationView, fr
             }
           }
         }
-      } else if ((selected?.kind === 'path'||selected?.kind === 'lake'||selected?.kind === 'materialRegion'||selected?.kind === 'plantingRegion')) {
-        const bounds = new THREE.Box3().setFromPoints(selected.points.map(([x,z]) => new THREE.Vector3(x,groundHeight(x,z,project.site),z)));
+      } else if ((selected?.kind==='hedge'||selected?.kind === 'path'||selected?.kind === 'lake'||selected?.kind === 'materialRegion'||selected?.kind === 'plantingRegion')) {
+        const bounds = new THREE.Box3().setFromPoints(selected.points.map(([x,z]) => new THREE.Vector3(x,selected.kind==='hedge'?(selected.topMode==='level'?selected.topElevation!:groundHeight(x,z,project.site)+selected.height):surfaceElevationAt(selected,project.site,[x,z]),z)));
         target = bounds.getCenter(new THREE.Vector3()); distance = Math.max(16, bounds.getSize(new THREE.Vector3()).length()*1.4)*aspectFit;
       } else if (selected?.kind === 'river') {
         const bounds = new THREE.Box3().setFromPoints(selected.points.map((point) => new THREE.Vector3(...point)));
@@ -437,7 +442,7 @@ function CameraRig({ project, selectedId, view, projection, onNavigationView, fr
     // Frame only on an explicit camera action; property changes preserve the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, controls, view, frameToken, project.site.width, project.site.depth]);
-  const drawing = tool === 'wall' || tool === 'floor' || tool === 'roof' || tool==='stairs' || (tool === 'plant' && !!plantBrush),routeDrawing=tool==='path';
+  const drawing = tool === 'wall' || tool === 'floor' || tool === 'roof' || tool==='stairs' || (tool === 'plant' && !!plantBrush),routeDrawing=tool==='path'||tool==='hedge';
   return <OrbitControls enabled={routeDrawing || drawing || tool === 'plant' || tool === 'select' || tool === 'door' || tool === 'window' || tool === 'opening-edit' || tool === 'wall-edit' || tool === 'outline-edit'} makeDefault enableDamping dampingFactor={0.12} minDistance={view.endsWith('underwater')?0.25:6} maxDistance={800} minZoom={.05} maxZoom={200} maxPolarAngle={Math.PI} enableRotate={!routeDrawing && view !== 'top'} onStart={() => {
     if (['front', 'back', 'left', 'right', 'bottom'].includes(view)) { const next=projection==='orthographic'?'axonometric':'perspective';navigationView.current = { view: next, frameToken }; onNavigationView(next); }
   }} touches={{ ONE: drawing ? undefined : routeDrawing ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }} mouseButtons={{ LEFT: drawing ? undefined : routeDrawing || view === 'top' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />;
@@ -480,7 +485,13 @@ export function Viewport(authored: Props) {
   const [hovering, setHovering] = useState(false);
   const selected = props.project.entities.find((entity) => entity.id === props.selectedId);
   const selectedRoute = useMemo(()=>selected?.kind==='instance' ? characterWalkingPath(selected) : undefined,[selected]);
+  const networkShape=JSON.stringify(project.entities.filter(e=>e.kind==='path').map(e=>({id:e.id,visible:e.visible,points:e.points,width:e.width,cornerRounding:e.cornerRounding,bridge:e.bridge,elevationMode:e.elevationMode,elevation:e.elevation,endElevation:e.endElevation})));
+  const courtyardShape=JSON.stringify(project.entities.filter(e=>e.kind==='materialRegion').filter(e=>e.surface==='paving').map(e=>({id:e.id,visible:e.visible,points:e.points,elevationMode:e.elevationMode,elevation:e.elevation})));
+  const surfaceHeights=useMemo(()=>gardenSurfaceHeights(project),[networkShape,courtyardShape,project.site.terrain]);
+  const courtyardSurfaces=useMemo(()=>courtyardNetworkSurfaces(project.entities.filter(e=>e.kind==='materialRegion').filter(e=>e.surface==='paving'),surfaceHeights),[courtyardShape,surfaceHeights]);
+  const networkSurfaces=useMemo(()=>pathNetworkSurfaces(project.entities.filter(e=>e.kind==='path'),[...courtyardSurfaces].flatMap(([id,polygons])=>polygons.map(points=>({id,points}))),surfaceHeights),[networkShape,courtyardSurfaces,surfaceHeights]);
   const draftCurve=useMemo(()=>roundedRoutePoints({points:props.pathDraft,width:props.pathDraftWidth??3,cornerRounding:props.pathDraftRounding}),[props.pathDraft,props.pathDraftWidth,props.pathDraftRounding]);
+  const draftSurface=useMemo(()=>props.pathDraftSurface?{...props.pathDraftSurface,points:props.pathDraft,width:props.pathDraftWidth??3,cornerRounding:props.pathDraftRounding}:undefined,[props.pathDraftSurface,props.pathDraft,props.pathDraftWidth,props.pathDraftRounding]);
   const pick = (id: string,additive=false) => { if(!editable(id))return; if (props.tool === 'select'||(props.tool==='wall-edit'||props.tool==='outline-edit')||props.tool==='opening-edit') props.onSelect(additive?id:unitForPart(project,id)?.id??id,additive); };
   const committedIds = new Set(props.editor.getSnapshot().project.entities.map(entity => entity.id));
   const copyPreviewIds = new Set(props.editor.getSnapshot().gestureLabel === 'Alt-drag copy' ? project.entities.filter(entity => !committedIds.has(entity.id)).map(entity => entity.id) : []);
@@ -503,19 +514,22 @@ export function Viewport(authored: Props) {
           <RiverSystem site={coastSite} river={project.entities.find(entity=>entity.kind==='river')} playing={props.playing} preview={{reset:props.waterPreview.riverReset,step:props.waterPreview.riverStep}} transient={transientCoast}>
           <LakeSystem site={coastSite} lake={project.entities.find(e=>e.kind==='lake')} playing={props.playing} preview={{reset:props.waterPreview.lakeReset,step:props.waterPreview.lakeStep}} transient={transientCoast}>
           {objectLayerState(authored.project,'terrain',authored.isolatedLayerId).visible&&<Terrain {...props} tool={props.tool==='terrain'&&!editable('terrain')?'select':props.tool}/>}
-          {project.entities.filter(isRegion).map((region,order)=>region.visible&&<group key={region.id} userData={{copyEntityId:region.id}}><RegionLayer region={region} project={project} order={order} selected={region.id===props.selectedId} enabled={props.tool==='select'&&editable(region.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError}/></group>)}
-          {props.tool==='region'&&<RegionDraft points={props.regionDraft} site={project.site}/>}
+          {project.entities.filter(isRegion).map((region,order)=>region.visible&&<group key={region.id} userData={{copyEntityId:region.id}}><RegionLayer region={region} surfaces={courtyardSurfaces.get(region.id)} project={project} order={order} selected={region.id===props.selectedId} enabled={props.tool==='select'&&editable(region.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError}/></group>)}
+          {props.tool==='region'&&<RegionDraft points={props.regionDraft} site={project.site} fill/>}
           {project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={entity.id} ocean={entity} site={project.site} selected={entity.id === props.selectedId} quality={props.quality} cutaway={props.view!=='shore'} />)}
           {props.view === 'shore' && project.entities.map((entity) => entity.kind === 'ocean' && <OceanSurface key={`${entity.id}-horizon`} ocean={entity} site={project.site} selected={false} quality={props.quality} horizon />)}
           {props.project.entities.filter((entity) => entity.kind === 'river' && entity.visible).map((river) => river.kind === 'river' && <group key={river.id} userData={{copyEntityId:river.id}}><RiverLayer river={river} project={props.project} editor={props.editor} selected={river.id === props.selectedId&&!props.view.endsWith('underwater')} playing={props.playing} quality={props.quality} enabled={props.tool === 'select'&&editable(river.id)} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError} /></group>)}
           {props.tool === 'river' && <RiverDraft points={props.riverDraft} />}
-          {project.entities.map(entity => entity.kind === 'path' && entity.visible && <group key={entity.id} userData={{copyEntityId:entity.id}}><PathLayer path={entity} project={project} selected={entity.id === props.selectedId} enabled={props.tool === 'select'&&editable(entity.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={entity.id===props.selectedId?props.routeCornerControls:undefined}/></group>)}
+          {project.entities.map(entity => entity.kind === 'path' && entity.visible && <group key={entity.id} userData={{copyEntityId:entity.id}}><PathLayer path={entity} surfaces={networkSurfaces.get(entity.id)} project={project} selected={entity.id === props.selectedId} enabled={props.tool === 'select'&&editable(entity.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={entity.id===props.selectedId?props.routeCornerControls:undefined}/></group>)}
           {selected?.kind==='instance' && selected.visible && selectedRoute && props.tool==='select' && <PathLayer key={selected.id} owner={selected} path={selectedRoute} project={project} selected enabled={editable(selected.id)} snapping={props.snapping} editor={props.editor} onSelect={props.onSelect} onError={props.onError} selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={props.routeCornerControls}/>}
-          {props.tool === 'path' && <PathDraft points={props.pathDraft} curvePoints={draftCurve} width={props.pathDraftWidth} site={project.site} selectedAnchor={props.draftRouteAnchor} onAnchorSelect={props.onDraftRouteAnchor} cornerControls={props.draftCornerControls}/>}
+          {project.entities.map(e=>e.kind==='hedge'&&e.visible&&<HedgeLayer selectedAnchor={props.selectedRouteAnchor} onAnchorSelect={props.onRouteAnchor} cornerControls={e.id===props.selectedId?props.routeCornerControls:undefined} key={e.id} hedge={e} project={project} editor={props.editor} selected={e.id===props.selectedId} enabled={props.tool==='select'&&editable(e.id)} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError}/>)}
+          {props.hedgeDrawing&&<HedgeDraft selectedAnchor={props.draftRouteAnchor} onAnchorSelect={props.onDraftRouteAnchor} cornerControls={props.draftCornerControls} hedge={props.hedgeDrawing} project={project} editor={props.editor} snapping={props.snapping} onSelect={props.onSelect} onError={props.onError}/>}
+          {props.tool === 'path' && <PathDraft points={props.pathDraft} curvePoints={draftCurve} width={props.pathDraftWidth} site={project.site} selectedAnchor={props.draftRouteAnchor} onAnchorSelect={props.onDraftRouteAnchor} cornerControls={props.draftCornerControls} elevationSurface={draftSurface}/>}
           {project.entities.map(entity=>entity.kind==='lake'&&entity.visible&&<group key={entity.id} userData={{copyEntityId:entity.id}}><LakeLayer lake={entity} project={project} editor={props.editor} selected={entity.id===props.selectedId&&!props.view.endsWith('underwater')} enabled={props.tool==='select'&&editable(entity.id)} snapping={props.snapping} quality={props.quality} onSelect={props.onSelect} onError={props.onError}/></group>)}
           {props.tool==='lake'&&<LakeDraft points={props.lakeDraft} level={props.lakeDraftLevel}/>}
           <group onPointerOver={() => setHovering(true)} onPointerOut={() => setHovering(false)}>
             {props.project.entities.filter((entity): entity is Block => entity.kind === 'block' && entity.visible).map((entity) => <Massing key={entity.id} blockOpeningEdit={(!!props.openingEditing||!!props.wallEditing||!!props.outlineEditing)&&!props.editor.getSnapshot().gestureLabel} entity={entity} selected={selectedParts.includes(entity.id)||entity.id === props.selectedId} onSelect={(id) => { if (props.tool === 'select') props.onSelect(id); }} />)}
+            {props.mirrorAxis&&<MirrorAxis axis={props.mirrorAxis} project={project}/>}
             {props.repeatDrawing&&<RepeatDrawing project={props.project} draft={props.repeatDrawing} onPoint={props.onGroundPoint} onError={props.onError}/>}
             {props.towerDrawing&&<TowerDrawing project={props.project} draft={props.towerDrawing} onPoint={props.onGroundPoint}/>}
             {props.architectureDrawing&&(props.architectureDrawing.kind==='stairs'

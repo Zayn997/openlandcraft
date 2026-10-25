@@ -9,6 +9,7 @@ export * from './river-water';
 export * from './paths';
 export * from './character-routes';
 export * from './lakes';
+export * from './bridges';
 
 export * from './regions';
 
@@ -49,5 +50,8 @@ export * from './floor-cuts';
 export * from './architectural-materials';
 export * from './opening-joinery';
 export * from './repeats';
+export * from './mirrors';
+export * from './hedges';
 export * from './towers';
 export * from './circular-floors';
+export * from './site-grading';

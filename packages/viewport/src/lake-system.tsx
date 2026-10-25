@@ -9,7 +9,7 @@ type Resources={simulation:LakeHistory;history:THREE.DataTexture;distance:THREE.
 const Context=createContext<Resources|null>(null);
 export const useLakeWater=()=>useContext(Context);
 export function LakeSystem({site,lake,playing,preview,transient,children}:{site:Project['site'];lake?:Lake;playing:boolean;preview:{reset:number;step:number};transient:boolean;children:ReactNode}){
-  const shape=JSON.stringify(lake?.points);
+  const shape=JSON.stringify([lake?.points,lake?.holes]);
   const resources=useMemo<Resources|null>(()=>{
     if(!lake?.visible)return null;
     const simulation=new LakeHistory(site,lake),history=new THREE.DataTexture(simulation.pixels,simulation.columns,simulation.rows,THREE.RGBAFormat);

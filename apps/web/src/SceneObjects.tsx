@@ -22,7 +22,7 @@ export function SceneObjects({ project, selectedId, selectedIds=[], editor, onSe
   const row=(e:Entity,depth:number):React.ReactNode=>{
     if(query&&!matches(e))return null;
     const owned=children.get(e.id)??[],open=!!query||expanded.has(e.id),status=objectLayerState(project,e.id,isolatedId),selectable=canEditObject(project,e.id,isolatedId);
-    const Icon=e.kind==='ocean'||e.kind==='river'||e.kind==='lake'?Waves:e.kind==='plantingRegion'||e.kind==='materialRegion'?Leaf:e.kind==='path'?Route:e.kind==='level'?Layers:Box;
+    const Icon=e.kind==='ocean'||e.kind==='river'||e.kind==='lake'?Waves:e.kind==='hedge'||e.kind==='plantingRegion'||e.kind==='materialRegion'?Leaf:e.kind==='path'?Route:e.kind==='level'?Layers:Box;
     return <div key={e.id} role="treeitem" aria-level={depth+2} aria-expanded={owned.length?open:undefined} aria-selected={selectedIds.includes(e.id)||selectedId===e.id}>
       <TreeRow className="object-row" depth={depth} selected={selectedIds.includes(e.id)||selectedId===e.id}>
         <button className="layer-chevron" disabled={!owned.length} aria-label={(open?'Collapse ':'Expand ')+e.name} onClick={()=>toggle(e.id)}>{owned.length>0&&(open?<ChevronDown size={13}/>:<ChevronRight size={13}/>)}</button>

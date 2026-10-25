@@ -8,11 +8,11 @@ import { Editor, createProject, createRiver, evaluateProject, parseProject, TERR
 describe('authored terrain and water materials', () => {
   it('migrates v6 without mutating the source or changing geometry and wave controls', () => {
     const source = structuredClone(v6), current = parseProject(v6);
-    expect(current.version).toBe(33); expect(v6).toEqual(source);
+    expect(current.version).toBe(39); expect(v6).toEqual(source);
     expect(current.site).toEqual({ ...source.site, materials: TERRAIN_MATERIAL_DEFAULTS });
     expect(current.assets).toEqual(source.assets);
     expect(current.entities).toEqual(source.entities.map(entity => ({ ...entity, appearance: WATER_APPEARANCE_DEFAULTS })));
-    expect(() => parseProject({ ...current, version:34 })).toThrow();
+    expect(() => parseProject({ ...current, version:40 })).toThrow();
   });
   it('keeps a material gesture atomic across preview, cancel, terrain patches, undo and redo', () => {
     const editor = new Editor(createProject()), before = editor.getSnapshot().project;

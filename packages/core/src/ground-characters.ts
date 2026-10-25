@@ -1,4 +1,4 @@
-import { lakeDistance, pointSegmentDistance, sampleRiver } from '@openlandcraft/landscape';
+import { lakeDistance, lakeWaterDistance, bridgeContains, bridgeStation, hedgeStrips, pointSegmentDistance, sampleRiver } from '@openlandcraft/landscape';
 import { assetAnimation } from './asset-animation';
 import { decodeGlb, type Asset } from './assets';
 import { footprint, type PlanPoint } from './architecture';
@@ -6,6 +6,7 @@ import { groundHeight, type Instance, type Project, type Path } from './model';
 import { instancePosition } from './placement';
 import { fishSeed } from './fish-schools';
 import { nearestWalkNode, pedestrianGraph, type PedestrianPath } from './pedestrian-paths';
+import {objectLayerState} from './layers';
 import { characterWalkingPath } from './character-routes';
 
 export const groundCharacterKind = (asset: Asset): 'horse' | 'person' | null => {
@@ -65,6 +66,7 @@ export function groundHabitat(project: Project) {
       const a = entity.rotation*Math.PI/180, c = Math.cos(a), s = Math.sin(a);
       polygons.push({margin:0, points:[[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,z]) =>
         [entity.position[0]+x*entity.size[0]/2*c+z*entity.size[2]/2*s,entity.position[2]-x*entity.size[0]/2*s+z*entity.size[2]/2*c])});
+    } else if(entity.kind==='hedge'){polygons.push(...hedgeStrips(entity).map(points=>({points,margin:0})));
     } else if (entity.kind === 'wall' || entity.kind === 'slab' || entity.kind === 'roof') {
       const level = project.entities.find(e => e.id === entity.parentId);
       if (level?.kind !== 'level') continue;
@@ -111,6 +113,8 @@ export function groundHabitat(project: Project) {
       for (let i = 0; i < (points.length === 2 ? 1 : points.length); i++)
         if (pointSegmentDistance([x,z],points[i],points[(i+1)%points.length]) < radius+margin+0.15) return false;
     }
+    if(project.entities.some(e=>e.kind==='path'&&e.bridge&&e.visible&&objectLayerState(project,e.id).visible&&bridgeContains(e,[x,z],radius)))return true;
+    for(const bridge of project.entities){if(bridge.kind!=='path'||!bridge.bridge||!bridge.visible||!objectLayerState(project,bridge.id).visible)continue;const q=bridgeStation(bridge,[x,z]);if(q.along>=0&&q.along<=q.length&&Math.abs(q.across)+radius>bridge.width/2-.12&&Math.abs(q.across)-radius<bridge.width/2)return false;}
     // Every touched terrain cell bounds height and slope between the ring samples.
     const {columns,rows,heights} = site.terrain, dx = site.width/(columns-1), dz = site.depth/(rows-1);
     let low = groundHeight(x,z,site);
@@ -122,7 +126,7 @@ export function groundHabitat(project: Project) {
       }
     for (const water of waters) {
       if (water.kind === 'ocean' && low < water.level+2*water.amplitude+0.12) return false;
-      if (water.kind === 'lake' && lakeDistance(water.points,x,z) > -radius && low < water.level+2*water.amplitude+0.12) return false;
+      if (water.kind === 'lake' && lakeWaterDistance(water,x,z) > -radius && low < water.level+2*water.amplitude+0.12) return false;
       if (water.kind === 'river') {
         const path = rivers.get(water.id)!;
         for (let i = 1; i < path.length; i++)

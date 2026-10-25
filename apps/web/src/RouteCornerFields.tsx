@@ -18,7 +18,7 @@ export function RouteCornerFields({route,index,onChange,onClose,onStart,onCommit
         onPointerDown={onStart} onChange={event=>onChange(Number(event.target.value)/100)} onPointerUp={onCommit} onPointerCancel={onCancel} onBlur={onCommit}
         onKeyUp={event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))onCommit?.();}}/>
         <output aria-hidden="true" className="w-9 shrink-0 text-right text-label tabular-nums text-accent">{Math.round(amount*100)}%</output></Row>
-      {!corner.canRound&&<FieldMessage>Spread the anchors or narrow the path to round this bend.</FieldMessage>}
+      {!corner.canRound&&<FieldMessage>Spread the anchors or narrow the run to round this bend.</FieldMessage>}
     </> : <FieldMessage>No bend at this point.</FieldMessage>}
     {error&&<FieldMessage tone="error" role="alert">{error}</FieldMessage>}</CardContent>
   </Card>;

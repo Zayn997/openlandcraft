@@ -1,15 +1,14 @@
 import * as THREE from 'three';
-import {clipPathPolygon,polygonArea,type PathPoint} from '@openlandcraft/landscape';
+import {clipPathPolygon,polygonArea,regionTriangles,compileSurface,type SiteSurface,type PathPoint} from '@openlandcraft/landscape';
 import type {Project} from '@openlandcraft/core';
 import type {PathMesh} from './path-geometry';
 
 /** Triangulate a concave outline, then clip to the terrain triangles for exact following. */
-export function buildRegionMesh(points:PathPoint[],site:Project['site'],lift:number):PathMesh {
+export function buildRegionMesh(points:PathPoint[],site:Project['site'],lift:number,surfaces?:PathPoint[][],surface?:SiteSurface):PathMesh {
   const positions:number[]=[],uvs:number[]=[],samples:PathMesh['samples']=[];
-  const triangles=THREE.ShapeUtils.triangulateShape(points.map(p=>new THREE.Vector2(...p)),[]);
+  const triangles=surfaces??regionTriangles(points);
   const {columns,rows}=site.terrain,dx=site.width/(columns-1),dz=site.depth/(rows-1);
-  for(const ids of triangles){
-    const outline=ids.map(i=>points[i]);
+  for(const outline of triangles){
     const minC=Math.max(0,Math.floor((Math.min(...outline.map(p=>p[0]))+site.width/2)/dx)),maxC=Math.min(columns-2,Math.floor((Math.max(...outline.map(p=>p[0]))+site.width/2)/dx));
     const minR=Math.max(0,Math.floor((Math.min(...outline.map(p=>p[1]))+site.depth/2)/dz)),maxR=Math.min(rows-2,Math.floor((Math.max(...outline.map(p=>p[1]))+site.depth/2)/dz));
     for(let r=minR;r<=maxR;r++)for(let c=minC;c<=maxC;c++){
@@ -29,9 +28,10 @@ export function buildRegionMesh(points:PathPoint[],site:Project['site'],lift:num
     }
   }
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-  const mesh={geometry,samples};updateRegionHeights(mesh,site,lift);return mesh;
+  const mesh={geometry,samples};updateRegionHeights(mesh,site,lift,surface);return mesh;
 }
-export function updateRegionHeights(mesh:PathMesh,site:Project['site'],lift:number){
-  const positions=mesh.geometry.getAttribute('position');mesh.samples.forEach(({indices,weights},i)=>positions.setY(i,indices.reduce((y,index,j)=>y+site.terrain.heights[index]*weights[j],lift)));
+export function updateRegionHeights(mesh:PathMesh,site:Project['site'],lift:number,surface?:SiteSurface){
+  const positions=mesh.geometry.getAttribute('position'),height=surface?.elevationMode&&surface.elevationMode!=='terrain'?compileSurface(surface).height:null;
+  mesh.samples.forEach(({indices,weights},i)=>positions.setY(i,height?height([positions.getX(i),positions.getZ(i)])+lift:indices.reduce((y,index,j)=>y+site.terrain.heights[index]*weights[j],lift)));
   positions.needsUpdate=true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingBox();mesh.geometry.computeBoundingSphere();
 }

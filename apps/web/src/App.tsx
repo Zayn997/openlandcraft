@@ -1,4 +1,8 @@
 import {joineryDraft,joineryValue} from './OpeningJoineryFields';
+import {hedgeCornerAmounts} from '@openlandcraft/landscape';
+import {useHedgeTool,HedgeInspector} from './HedgeTools';
+import {MirrorPanel,MirrorSelection,type MirrorRequest} from './MirrorTools';
+import {mirrorSources,repeatOwner,type MirrorRule} from '@openlandcraft/core';
 import {useRepeatTool,RepeatSelection} from './RepeatTools';
 import {useTowerTool,TowerSelection} from './TowerTools';
 import {repeatSources} from '@openlandcraft/core';
@@ -87,7 +91,7 @@ import {
   createDrawnPath,
   createCharacterRoute,
   characterWalkingPath,
-  createLake,
+  createLake, createMoat, createBridge,
   createRegion,
   isRegion,
   snapPathPoint,
@@ -239,12 +243,13 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   );
   const [storageRecovery, setStorageRecovery] = useState(false);
   const [inspectorEpoch, setInspectorEpoch] = useState(0);
-  const [tool, setTool] = useState<"select" | "tower" | "repeat" | "terrain" | "plant" | "building" | "wall" | "floor" | "roof" | "stairs" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
+  const [tool, setTool] = useState<"select" | "hedge" | "tower" | "repeat" | "terrain" | "plant" | "building" | "wall" | "floor" | "roof" | "stairs" | "door" | "window" | "opening-edit" | "wall-edit" | "outline-edit" | "river" | "path" | "lake" | "region">(
     "select",
   );
   const [regionsOpen,setRegionsOpen]=useState(false);
   const [regionType,setRegionType]=useState<RegionTool>("material");
   const [regionDraft,setRegionDraft]=useState<PathPoint[]>([]);
+  const [mirrorDraft,setMirrorDraft]=useState<MirrorRequest|null>(null),[mirrorGuide,setMirrorGuide]=useState<MirrorRule|null>(null);
   const [waterOpen,setWaterOpen]=useState(false);
   const [waterType,setWaterType]=useState<InlandWaterType>("river");
   const [lakeDraft,setLakeDraft]=useState<PathPoint[]>([]);
@@ -262,6 +267,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const [transformMode, setTransformMode] =
     useState<TransformMode>("translate");
   const [snapping, setSnapping] = useState(true);
+  const hedge=useHedgeTool(editor,snapping,setSnapping,id=>{chooseTool('select');if(id)select(id);},setError);
   const repeat=useRepeatTool(editor,snapping,setSnapping,()=>chooseTool('select'),setError);
   const tower=useTowerTool(editor,snapping,setSnapping,()=>chooseTool('select'),setError);
   const plants = usePlantPlacement(editor, tool === 'plant', snapping, setError);
@@ -385,6 +391,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   }, []);
   const select = useCallback(
     (id: string | null, additive = false) => {
+      setMirrorDraft(null);setMirrorGuide(null);
       setRouteCornerIndex(null);
       const before=editor.getSnapshot();
       if(id&&!canEditObject(before.project,id,before.isolatedLayerId))return;
@@ -397,7 +404,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       editor.select(id);
       const water=editor.getSnapshot().project.entities.find(e=>e.id===id);
       setRegionsOpen(!!water&&isRegion(water));
-      if(water&&isRegion(water))setRegionType(water.kind==="materialRegion"?"material":"planting");
+      if(water&&isRegion(water))setRegionType(water.kind==="materialRegion"?water.surface==='paving'?'courtyard':"material":"planting");
       setWaterOpen(water?.kind==="river"||water?.kind==="lake");
       if(water?.kind==="river"||water?.kind==="lake")setWaterType(water.kind);
       if (id === "terrain")
@@ -417,9 +424,11 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     if (tool === 'path' && pathReturnId) editor.select(pathReturnId);
     setFrameCancelToken(value => value + 1);
     setCopyDraft(null);
+    setMirrorDraft(null);setMirrorGuide(null);
     stairAttachment.cancel();
     setOpeningFocus(null);
     setTool('select');
+    hedge.reset();
     repeat.reset();
     tower.reset();
     setDrawingLevelId(null);
@@ -433,12 +442,12 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   }, [editor,tool,pathReturnId]);
   useEditorEscape(useCallback(() => {
     if(stairAttachment.draft){stairAttachment.cancel();return;}
-    if(routeCornerIndex!==null||pathCornerIndex!==null){editor.cancel();setRouteCornerIndex(null);setPathCornerIndex(null);return;}
+    if(routeCornerIndex!==null||pathCornerIndex!==null||hedge.cornerIndex!==null){editor.cancel();setRouteCornerIndex(null);setPathCornerIndex(null);hedge.setCornerIndex(null);return;}
     cancelPreview();
     setShowHelp(false);
     setProjectDialog(null);
     setNotice('');
-  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex,stairAttachment.draft]), !opening && !importingModel);
+  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex,hedge.cornerIndex,stairAttachment.draft]), !opening && !importingModel);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -498,11 +507,13 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   };
   const chooseTool = (next: typeof tool) => {
     if(drawingArchitecture&&wallDraft.length)setNotice('Unfinished drawing discarded. No geometry was added.');
+    setMirrorDraft(null);setMirrorGuide(null);
     stairAttachment.cancel();
     setCopyDraft(null);setSelectedParts([]);setOpeningFocus(null);
     editor.cancel();
     if (next !== "select" && (view === "shore" || view.endsWith("underwater"))) setView("perspective");
     setTool(next);
+    if(next!=='hedge')hedge.reset();
     if(next!=='repeat')repeat.reset();
     if(next!=='tower')tower.reset();
     if(next==='opening-edit'){setOpeningStatus('Click a tinted door or window opening to edit it.');if(placementLevel)editor.select(placementLevel.id);setPanel('inspector');}
@@ -572,14 +583,16 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     const existing=editor.getSnapshot().project.entities.find(e=>e.kind===type);
     select(existing?.id??null);setWaterType(type);setWaterOpen(true);setPanel("inspector");
   };
+  const addMoat=()=>guard(()=>{editor.cancel();const moat=createMoat(editor.getSnapshot().project);editor.execute({type:'add',entity:moat},'Add ring moat');select(moat.id);setNotice('Ring moat added. Edit both shorelines in Water System, then add a bridge.');});
+  const addBridge=(lakeId:string)=>guard(()=>{editor.cancel();const bridge=createBridge(editor.getSnapshot().project,lakeId);editor.execute({type:'add',entity:bridge},'Add moat bridge');select(bridge.id);setNotice('Bridge added. Edit its deck, approaches and independent bank endpoints in Properties.');});
   const addLake = (points?:PathPoint[]) => guard(()=>{
     editor.cancel();const current=editor.getSnapshot().project,lake=createLake(current,points);
     editor.execute({type:"add",entity:lake},"Add lake");select(lake.id);setNotice("Lake added. Edit its boundary, level, and surface in Water System.");
   });
-  const startPathDrawing = (characterId?: string) => guard(() => {
+  const startPathDrawing = (characterId?: string, redrawPathId?: string) => guard(() => {
     const current = editor.getSnapshot(), character = current.project.entities.find(entity=>entity.id===characterId);
     if(characterId && (character?.kind!=='instance'||!canEditObject(current.project,characterId,current.isolatedLayerId))) throw new Error('Show and unlock this person before drawing their route.');
-    const existing = character?.kind==='instance' ? characterWalkingPath(character) : current.project.entities.find(e => e.kind === 'path');
+    const existing = character?.kind==='instance' ? characterWalkingPath(character) : current.project.entities.find((e):e is Path => e.kind === 'path'&&e.id===redrawPathId);
     if (!characterId && existing && !canEditObject(current.project,existing.id,current.isolatedLayerId)) throw new Error('Show and unlock the path layer before redrawing.');
     chooseTool('path');
     setPathReturnId(characterId ?? null);
@@ -688,6 +701,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       });return;
     }
 
+    if(tool==='hedge'){hedge.point(x,z);return;}
     const next: [number, number] = [snap(x), snap(z)];
     if(tool==="region"){
       guard(()=>{if(regionDraft.length>=16)throw new Error("Finish this region with up to 16 points.");
@@ -710,7 +724,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       guard(() => {
         if (pathDraft.length >= 16) throw new Error("Finish this path with up to 16 points.");
         const current = editor.getSnapshot().project;
-        const snapped = snapPathPoint(current, [x, z], snapping);
+        const snapped = snapPathPoint(current, [x, z], snapping,true,pathRedrawId??undefined,editor.getSnapshot().isolatedLayerId);
         const points = [...pathDraft, snapped.point];
         if (points.length > 1) {
           if(pathReturnId)createCharacterRoute(current,pathReturnId,points,pathDrawWidth,[...pathDraftRounding,0]);
@@ -1176,12 +1190,15 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
           actions={<>
             <CreationMenu project={project} busy={!!state.gestureLabel}
               onTower={()=>{chooseTool('tower');tower.start();setPanel('inspector');setView('top');}}
+              onHedge={()=>guard(()=>{chooseTool('hedge');hedge.start();setPanel('inspector');setView('top');})}
+              onMirror={()=>{const ids=selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[],sources=mirrorSources(project),owner=state.selectedId?repeatOwner(project,state.selectedId):undefined;chooseTool('select');setMirrorDraft(owner?{repeatId:owner.id}:{sourceIds:ids.filter(id=>sources.some(e=>e.id===id))});setPanel('inspector');setView('top');}}
               onRepeat={()=>{const source=repeatSources(project).find(e=>e.id===state.selectedId);chooseTool('repeat');repeat.start(source?.id);setPanel('inspector');setView('top');}}
               onAddBlock={addBlock} onAddBuilding={()=>addBuilding()}
               onDrawBuilding={()=>{chooseTool('building');setView('top');}}
               onDrawArchitecture={(kind,shape)=>startArchitecture(kind,undefined,shape)}
               onRegions={()=>openRegions()} onWater={()=>openWaterSystem()}
               onDrawPath={()=>startPathDrawing()}
+              onDrawCourtyard={()=>{openRegions('courtyard');chooseTool('region');setView('top');frame();}}
               onAddOcean={addOcean}
               onPlaceAsset={placeAsset}
               onRemoveAsset={id=>guard(()=>editor.execute({type:'removeAsset',id},'Remove model source'))}
@@ -1247,6 +1264,8 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               brush={brush}
               onStrokeTime={reportStroke}
               onGroundPoint={groundPoint}
+              mirrorAxis={mirrorDraft?mirrorGuide??undefined:undefined}
+              hedgeDrawing={tool==='hedge'?hedge.draft:undefined}
               repeatDrawing={tool==='repeat'?repeat.drawing:undefined}
               towerDrawing={tool==='tower'?tower.drawing:undefined}
               wallDraft={wallDraft}
@@ -1257,13 +1276,14 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               riverDraft={riverDraft}
               pathDraft={pathDraft}
               pathDraftRounding={pathDraftRounding}
-              draftRouteAnchor={pathCornerIndex}
-              onDraftRouteAnchor={index=>{setPathCornerIndex(index);}}
+              draftRouteAnchor={tool==='hedge'?hedge.cornerIndex:pathCornerIndex}
+              onDraftRouteAnchor={index=>{if(tool==='hedge')hedge.setCornerIndex(index);else setPathCornerIndex(index);}}
               selectedRouteAnchor={routeCornerIndex}
-              routeCornerControls={routeCornerIndex!==null&&selected&&(selected.kind==='path'||selected.kind==='instance'&&selected.walkingRoute)?<RouteCornerEditor key={`${selected.id}:${routeCornerIndex}`} entity={selected} index={routeCornerIndex} editor={editor} onClose={()=>setRouteCornerIndex(null)}/>:undefined}
-              draftCornerControls={pathCornerIndex!==null?<RouteCornerFields route={{points:pathDraft,width:pathDrawWidth,cornerRounding:pathDraftRounding}} index={pathCornerIndex} onChange={amount=>setPathDraftRounding(values=>values.map((value,index)=>index===pathCornerIndex?amount:value))} onClose={()=>setPathCornerIndex(null)}/>:undefined}
+              routeCornerControls={routeCornerIndex!==null&&selected&&(selected.kind==='hedge'||selected.kind==='path'||selected.kind==='instance'&&selected.walkingRoute)?<RouteCornerEditor key={`${selected.id}:${routeCornerIndex}`} entity={selected} index={routeCornerIndex} editor={editor} onClose={()=>setRouteCornerIndex(null)}/>:undefined}
+              draftCornerControls={tool==='hedge'&&hedge.cornerIndex!==null?<RouteCornerFields route={{...hedge.draft,cornerRounding:hedgeCornerAmounts(hedge.draft)}} index={hedge.cornerIndex} onChange={hedge.roundCorner} onClose={()=>hedge.setCornerIndex(null)}/>:pathCornerIndex!==null?<RouteCornerFields route={{points:pathDraft,width:pathDrawWidth,cornerRounding:pathDraftRounding}} index={pathCornerIndex} onChange={amount=>setPathDraftRounding(values=>values.map((value,index)=>index===pathCornerIndex?amount:value))} onClose={()=>setPathCornerIndex(null)}/>:undefined}
               onRouteAnchor={index=>setRouteCornerIndex(index)}
               pathDraftWidth={pathDrawWidth}
+              pathDraftSurface={project.entities.find((e):e is Path=>e.kind==='path'&&e.id===pathRedrawId)}
               regionDraft={regionDraft}
               lakeDraft={lakeDraft}
               lakeDraftLevel={lakeDraft.length?createLake(project,lakeDraft).level:0}
@@ -1369,17 +1389,18 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
         </main>
 
         <InspectorPanel
-          reveal={tool === 'path'||tool==='repeat'||tool==='tower'}
+          reveal={tool==='hedge'||tool === 'path'||tool==='repeat'||tool==='tower'}
           mobileActive={panel === "inspector"}
           editing={!!state.gestureLabel}
           selectionKey={focusedOpening?.id ?? state.selectedId ?? ''}
           scope={tool === 'path' ? 'draw-path' : drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
           {['select','wall-edit','outline-edit','opening-edit'].includes(tool)&&state.selectedId&&<TowerSelection key={`tower-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
-          {tool==='select'&&state.selectedId&&<RepeatSelection key={`repeat-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
+          {tool==='select'&&!mirrorDraft&&state.selectedId&&<MirrorSelection editor={editor} id={state.selectedId} onEdit={r=>{editor.cancel();setMirrorDraft(r);setPanel('inspector');}} onSelect={select} onError={setError}/>}
+          {tool==='select'&&!mirrorDraft&&state.selectedId&&<RepeatSelection key={`repeat-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
           {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
           {!drawingArchitecture&&!placingOpening&&!editingOpening&&!focusedOpening&&!stairAttachment.draft&&['select','wall-edit','outline-edit'].includes(tool)&&<ArchitecturalMaterialFields key={'material-'+(selectedParts.length?selectedParts:[state.selectedId]).join('|')} project={project} editor={editor} ids={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]}/>}
-          {stairAttachment.panel??(tool === 'tower' ? tower.panel : tool === 'repeat' ? repeat.panel : tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools stairShape={stairShape} onStairShape={shape=>{setStairShape(shape);setWallDraft([]);if(shape==='spiral'&&stairTower)setStairDimensions(old=>({...old,...spiralTowerDimensions(stairTower)}));}} stairTowerId={stairTower?.id??'draw'} onStairTower={chooseStairTower} onFitStairTower={fitSpiralStairs} stairDimensions={stairDimensions} onStairDimensions={setStairDimensions} roofShape={roofShape} roofHeight={roofHeight} roofOverhang={roofOverhang} roofTowerId={roofTower?.id??'draw'} roofTowers={roofTowers} onRoofShape={shape=>{setRoofShape(shape);setWallDraft([]);}} onRoofHeight={setRoofHeight} onRoofOverhang={setRoofOverhang} onRoofTower={setRoofTowerId} onFitTower={fitConicalRoof} wallShape={wallShape} wallHeight={wallHeight} clockwise={wallClockwise} onWallShape={shape=>{setWallShape(shape);setWallDraft([]);setSurfaceOffset(shape==='straight'?0:0.2);}} onWallHeight={setWallHeight} onClockwise={setWallClockwise} kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor onAttachStair={end=>{setTool('outline-edit');setPanel('inspector');stairAttachment.start(outlineTarget.id,end);}} key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools project={project} kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+          {(mirrorDraft?<MirrorPanel key={mirrorDraft.ruleId??'new-mirror'} editor={editor} request={mirrorDraft} onGuide={setMirrorGuide} onClose={()=>{setMirrorDraft(null);setMirrorGuide(null);}} onSelect={select}/>:stairAttachment.panel)??(tool === 'hedge' ? hedge.panel : tool === 'tower' ? tower.panel : tool === 'repeat' ? repeat.panel : tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools stairShape={stairShape} onStairShape={shape=>{setStairShape(shape);setWallDraft([]);if(shape==='spiral'&&stairTower)setStairDimensions(old=>({...old,...spiralTowerDimensions(stairTower)}));}} stairTowerId={stairTower?.id??'draw'} onStairTower={chooseStairTower} onFitStairTower={fitSpiralStairs} stairDimensions={stairDimensions} onStairDimensions={setStairDimensions} roofShape={roofShape} roofHeight={roofHeight} roofOverhang={roofOverhang} roofTowerId={roofTower?.id??'draw'} roofTowers={roofTowers} onRoofShape={shape=>{setRoofShape(shape);setWallDraft([]);}} onRoofHeight={setRoofHeight} onRoofOverhang={setRoofOverhang} onRoofTower={setRoofTowerId} onFitTower={fitConicalRoof} wallShape={wallShape} wallHeight={wallHeight} clockwise={wallClockwise} onWallShape={shape=>{setWallShape(shape);setWallDraft([]);setSurfaceOffset(shape==='straight'?0:0.2);}} onWallHeight={setWallHeight} onClockwise={setWallClockwise} kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor onAttachStair={end=>{setTool('outline-edit');setPanel('inspector');stairAttachment.start(outlineTarget.id,end);}} key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools project={project} kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
             <PanelBody className="terrain-inspector">
               <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
               <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
@@ -1561,14 +1582,16 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
           ) : selected&&isRegion(selected) ? (
             <RegionInspector key={selected.id+"-"+state.revision+"-"+inspectorEpoch} region={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping}/>
           ) : waterOpen && (!selected||selected.kind==="river"||selected.kind==="lake") ? (
-            <WaterSystem type={waterType} onType={openWaterSystem} onDraw={()=>{chooseTool(waterType);setView("top");}} onAdd={()=>waterType==="river"?addRiver():addLake()} drawing={tool==="river"||tool==="lake"} existing={project.entities.find(e=>e.kind===waterType)} onSelectExisting={select}
+            <WaterSystem onAddMoat={addMoat} type={waterType} onType={openWaterSystem} onDraw={()=>{chooseTool(waterType);setView("top");}} onAdd={()=>waterType==="river"?addRiver():addLake()} drawing={tool==="river"||tool==="lake"} existing={project.entities.find(e=>e.kind===waterType)} onSelectExisting={select}
               canDive={!!inlandDives[waterType]} diving={view===`${waterType}-underwater`} onDive={()=>{chooseTool('select');setView(`${waterType}-underwater`);setFrameToken(v=>v+1);}} onExitDive={()=>setView('perspective')}>
-              {selected?.kind==="river"?<RiverInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} river={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,riverReset:v.riverReset+1}))} onStep={()=>setWaterPreview(v=>({...v,riverStep:v.riverStep+1}))}/>:selected?.kind==="lake"?<LakeInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>:undefined}
+              {selected?.kind==="river"?<RiverInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} river={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,riverReset:v.riverReset+1}))} onStep={()=>setWaterPreview(v=>({...v,riverStep:v.riverStep+1}))}/>:selected?.kind==="lake"?<LakeInspector onAddBridge={addBridge} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>:undefined}
             </WaterSystem>
           ) : selected?.kind === "lake" ? (
-            <LakeInspector key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>
+            <LakeInspector onAddBridge={addBridge} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} lake={selected} editor={editor} cancel={cancelPreview} playing={playing} onReset={()=>setWaterPreview(v=>({...v,lakeReset:v.lakeReset+1}))} onStep={()=>setWaterPreview(v=>({...v,lakeStep:v.lakeStep+1}))} snapping={snapping} onSnapping={setSnapping}/>
+          ) : selected?.kind === 'hedge' ? (
+            <HedgeInspector onCorner={setRouteCornerIndex} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} hedge={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping} onRedraw={()=>guard(()=>{const id=selected.id;hedge.start(id);chooseTool('hedge');setPanel('inspector');setView('top');})}/>
           ) : selected?.kind === "path" ? (
-            <PathInspector onCorner={index=>{setRouteCornerIndex(index);}} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} path={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping} onRedraw={()=>startPathDrawing()} />
+            <PathInspector onCorner={index=>{setRouteCornerIndex(index);}} key={`${selected.id}-${state.revision}-${inspectorEpoch}`} path={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping} onRedraw={()=>startPathDrawing(undefined,selected.id)} onAdd={()=>startPathDrawing()} />
           ) : selected?.kind === "river" ? (
             <RiverInspector
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}

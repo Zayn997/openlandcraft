@@ -32,6 +32,6 @@ describe('editable hosted frames, door panels and glass',()=>{
   const locked={...p,layers:p.layers.map(l=>({...l,locked:true}))};expect(()=>applyCommand(locked,{type:'architecturalMaterial',material:{...architecturalMaterials(p)[1],scale:3}})).toThrow('Unlock');
  });
  it('migrates strict format 30 with empty openings unchanged and persists all authored details',async()=>{
-  const p=scene(),{joinery,...oldGate}=gate,old={...p,version:30,entities:[level,{...ring(),openings:[oldGate]}]},snapshot=structuredClone(old),upgraded=parseProject(old);expect(upgraded.version).toBe(33);expect(wall(upgraded).openings![0].joinery).toBeUndefined();expect(old).toEqual(snapshot);expect(()=>parseProject({...p,version:30})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);expect(openingCenter(wall(p),gate)).toEqual(openingCenter(wall(deserializeProject(serializeProject(p))),gate));
+  const p=scene(),{joinery,...oldGate}=gate,old={...p,version:30,entities:[level,{...ring(),openings:[oldGate]}]},snapshot=structuredClone(old),upgraded=parseProject(old);expect(upgraded.version).toBe(39);expect(wall(upgraded).openings![0].joinery).toBeUndefined();expect(old).toEqual(snapshot);expect(()=>parseProject({...p,version:30})).toThrow();expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);expect(openingCenter(wall(p),gate)).toEqual(openingCenter(wall(deserializeProject(serializeProject(p))),gate));
  });
 });

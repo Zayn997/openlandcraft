@@ -18,6 +18,7 @@ import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { instancePosition, type Asset, type BuildingPart, type Editor, type Entity, type Instance, type Level, type Project } from '@openlandcraft/core';
 import { disposeModel, loadModel } from './models';
 import { instanceMatrix, staticMeshes } from './instancing';
+import {mirrorBatchInstances} from './mirror-instances';
 const noRaycast = () => undefined;
 
 function ModelCopy({ source, interactive }: { source: THREE.Group; interactive: boolean }) {
@@ -101,7 +102,11 @@ export function ModelInstances({ asset, instances, project, selectedId, selected
     loadModel(asset).then((root) => { if (!alive) { disposeModel(root); return; } owned = root; setSource(root); }).catch((error: unknown) => { if (alive) onError(`${asset.name}: ${error instanceof Error ? error.message : 'Model could not load.'}`); });
     return () => { alive = false; if (owned) disposeModel(owned); };
   }, [asset.data]);
-  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={instances} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect} /></group> : null;
+  const normal=instances.filter(e=>!e.mirrored),mirrored=instances.filter(e=>e.mirrored);
+  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}>
+    {!!normal.length&&<ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={normal} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/>}
+    {!!mirrored.length&&<group scale={[-1,1,1]}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={mirrorBatchInstances(mirrored,project)} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/></group>}
+  </group> : null;
 }
 
 function Part({ entity, project, material, walls, selected, dimensions, onSelect, onWallPick, onOutlinePick, activeEdit=false, interactive, blocking=false }: { onWallPick?: (id: string, doubleClick: boolean) => void; onOutlinePick?: (id: string, doubleClick: boolean) => void; activeEdit?: boolean; blocking?:boolean;interactive:boolean;project:Project;material?:ArchitecturalMaterial;entity: BuildingPart; walls: Wall[]; selected: boolean; dimensions:boolean; onSelect: (id: string,additive?:boolean) => void }) {

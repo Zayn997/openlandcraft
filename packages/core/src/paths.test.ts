@@ -51,28 +51,29 @@ describe('path authoring and compatibility', () => {
     editor.redo(); expect(editor.getSnapshot().project.entities[0]).toEqual(redrawn);
     expect(editor.getSnapshot().project.site.terrain).toEqual(before.site.terrain);
   });
-  it('rejects incomplete, invalid or unintended second drawings before changing the document', () => {
+  it('rejects incomplete and invalid drawings before changing the document', () => {
     const p = site(), before = structuredClone(p);
     for (const points of [[],[[0,0]],[[0,0],[10,0],[1,1]],[[-31,0],[20,0]],[[0,0],[NaN,5]]] as [number,number][][])
       expect(() => createDrawnPath(p,points,{width:3,surface:'gravel'})).toThrow();
     expect(p).toEqual(before);
     p.entities = [createPath(p)];
-    expect(() => createDrawnPath(p,[[-10,0],[10,0]],{width:3,surface:'gravel'})).toThrow(/Redraw/);
+    expect(createDrawnPath(p,[[-10,0],[10,0]],{width:3,surface:'gravel'}).id).not.toBe(p.entities[0].id);
     expect(() => createDrawnPath(p,[[-10,0],[10,0]],{width:3,surface:'gravel'},'missing')).toThrow(/no longer exists/);
   });
   it('migrates version 8 without changing water, terrain or source entities', () => {
     const source = structuredClone(legacy), current = parseProject(legacy);
-    expect(current).toEqual({...source,version:33,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
-    expect(() => parseProject({ ...current, version:34 })).toThrow();
+    expect(current).toEqual({...source,version:39,layers:defaultLayers(),objectLayers:{},activeLayerId:"default"}); expect(legacy).toEqual(source);
+    expect(() => parseProject({ ...current, version:40 })).toThrow();
     expect(() => parseProject({ ...source, entities: [...source.entities, createPath(current)] })).toThrow();
   });
-  it('rejects unsupported geometry, modes and second paths atomically', () => {
+  it('rejects unsupported geometry and modes atomically while allowing separate paths', () => {
     const editor = new Editor(site()), path = createPath(editor.getSnapshot().project);
     editor.execute({ type: 'add', entity: path }, 'Path'); const before = editor.getSnapshot();
     for (const patch of [{ width: 9 }, { width: NaN }, { surface: 'asphalt' }, { elevationMode: 'fixed' }, { points: [[0, 0]] }, { points: [[0, 0], [0.2, 0]] }, { points: [[-31, 0], [29, 0]], width: 8 }, { points: [[-10,-10],[10,10],[-10,10],[10,-10]] }, { points: [[0,0],[10,0],[0,0]] }]) {
       expect(() => editor.execute({ type: 'replace', entity: { ...path, ...patch } as Path }, 'Invalid')).toThrow(); expect(editor.getSnapshot()).toBe(before);
     }
-    expect(() => editor.execute({ type: 'add', entity: { ...path, id: 'second', visible: false } }, 'Second')).toThrow('one unbranched path');
+    editor.execute({ type: 'add', entity: { ...path, id: 'second', visible: false } }, 'Second');
+    expect(editor.getSnapshot().project.entities).toHaveLength(2);
   });
   it('accepts bounded miter turns and dimensions; rejects width overlap', () => {
     expect(pathIssue({ points: [[-10,0],[0,0],[0,10]], width: 2 }, site().site)).toBeNull();

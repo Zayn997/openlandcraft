@@ -5,9 +5,9 @@ import {groundHeight,type Project} from '@openlandcraft/core';
 import type {PathPoint} from '@openlandcraft/landscape';
 
 /** Keep the editor beside its world-space anchor and inside the viewer edges. */
-export function PathCornerPopover({point,site,children}:{point:PathPoint;site:Project['site'];children:ReactNode}){
+export function PathCornerPopover({point,site,children,height}:{point:PathPoint;site:Project['site'];children:ReactNode;height?:number}){
   const panel=useRef<HTMLDivElement>(null),position=useRef(new Vector3());
-  return <Html position={[point[0],groundHeight(...point,site)+.25,point[1]]} zIndexRange={[40,30]}
+  return <Html position={[point[0],(height??groundHeight(...point,site))+.25,point[1]]} zIndexRange={[40,30]}
     calculatePosition={(object,camera,size)=>{
       const projected=position.current.setFromMatrixPosition(object.matrixWorld).project(camera);
       const x=(projected.x+1)*size.width/2,y=(1-projected.y)*size.height/2;

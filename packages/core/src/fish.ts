@@ -1,4 +1,4 @@
-import { lakeDistance, sampleRiver } from '@openlandcraft/landscape';
+import { lakeWaterDistance, sampleRiver } from '@openlandcraft/landscape';
 import type { Asset } from './assets';
 import { assetAnimation } from './asset-animation';
 import { groundHeight, type Project } from './model';
@@ -18,10 +18,10 @@ export function fishHabitat(project: Project) {
       let level: number, amplitude: number;
       if (water.kind === 'ocean') {
         // The ocean renderer cuts out lake footprints, including their transition bank.
-        if (lakes.some(lake => lakeDistance(lake.points, x, z) > -radius - 0.8)) return null;
+        if (lakes.some(lake => lakeWaterDistance(lake, x, z) > -radius - 0.8)) return null;
         level = water.level; amplitude = water.amplitude;
       } else if (water.kind === 'lake') {
-        if (lakeDistance(water.points, x, z) < radius) return null;
+        if (lakeWaterDistance(water, x, z) < radius) return null;
         level = water.level; amplitude = water.amplitude;
       } else if (water.kind === 'river') {
         let nearest = Infinity, surface = 0, insideEnd = false;

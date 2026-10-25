@@ -10,7 +10,7 @@ import {isCircularWall} from './curved-walls';
 import {wallWalkProfile} from './wall-walks';
 import {pathLength,pathParameter,wallPathPoint,wallTangent} from './wall-path';
 import {evaluateProject} from './surface';
-import {lakeDistance,sampleRiver,pointSegmentDistance} from '@openlandcraft/landscape';
+import {lakeDistance,lakeWaterDistance,sampleRiver,pointSegmentDistance} from '@openlandcraft/landscape';
 
 export type StairEnd='bottom'|'top';
 export type StairLanding=NonNullable<NonNullable<Slab['stairs']>['landings']>['top'];
@@ -74,7 +74,7 @@ function terrainLanding(project:Project,part:Slab,points:PlanPoint[],paths:NonNu
   const heights=samples.map(q=>{
     const y=terrainTriangleHeight(surface.site,q);
     for(const water of project.entities){
-      if(water.kind==='ocean'&&y<water.level+.02||water.kind==='lake'&&lakeDistance(water.points,...q)>=0&&y<water.level+.02)throw new Error('Choose dry ground for the bottom landing.');
+      if(water.kind==='ocean'&&y<water.level+.02||water.kind==='lake'&&lakeWaterDistance(water,...q)>=0&&y<water.level+.02)throw new Error('Choose dry ground for the bottom landing.');
       if(water.kind==='river'&&riverPath.some((a,i)=>i>0&&pointSegmentDistance(q,[riverPath[i-1].x,riverPath[i-1].z],[a.x,a.z])<=water.width/2&&y<Math.max(a.y,riverPath[i-1].y)))throw new Error('Choose dry ground outside the river for the bottom landing.');
     }
     return y-level.position[1];

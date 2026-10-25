@@ -1,5 +1,5 @@
 import {groundHeight,type Project,type Lake,type River} from '@openlandcraft/core';
-import {lakeDistance,sampleRiver} from '@openlandcraft/landscape';
+import {lakeWaterDistance,sampleRiver} from '@openlandcraft/landscape';
 
 /** A dive must fit between the real carved bed and the trough allowance. */
 export function inlandWaterCamera(site:Project['site'],water:Lake|River):{position:[number,number,number];target:[number,number,number]}|null {
@@ -19,7 +19,7 @@ export function inlandWaterCamera(site:Project['site'],water:Lake|River):{positi
     const {columns,rows}=site.terrain,angle=water.direction*Math.PI/180;
     for(let r=1;r<rows-1;r++)for(let c=1;c<columns-1;c++){
       const x=c/(columns-1)*site.width-site.width/2,z=r/(rows-1)*site.depth-site.depth/2;
-      consider(x,z,water.level,Math.cos(angle),Math.sin(angle),lakeDistance(water.points,x,z));
+      consider(x,z,water.level,Math.cos(angle),Math.sin(angle),lakeWaterDistance(water,x,z));
     }
   }else{
     const path=sampleRiver(water.points);
