@@ -1,8 +1,15 @@
-import {Camera,OrthographicCamera,PerspectiveCamera,Vector3} from 'three';
-import type {CameraView} from './navigation';
+import {Box3,Camera,OrthographicCamera,PerspectiveCamera,Sphere,Vector3} from 'three';
+import {orientationPosition,type CameraView} from './navigation';
 
 export type CameraProjection='perspective'|'orthographic';
 const FOV=42;
+/** Fit the whole site independently of the current selection, pan, zoom or pose. */
+export function overviewCameraPose(bounds:Box3,projection:CameraProjection,aspect:number){
+  const sphere=bounds.getBoundingSphere(new Sphere()),target=sphere.center;
+  const halfFov=Math.atan(Math.tan(FOV*Math.PI/360)*Math.min(1,aspect));
+  const distance=Math.max(1,sphere.radius)*1.12/(projection==='orthographic'?Math.tan(halfFov):Math.sin(halfFov));
+  return {target,position:orientationPosition(projection==='orthographic'?'axonometric':'perspective',target,distance)};
+}
 /** Dive/shore poses have their own scale; returning to an editor view must frame it again. */
 export function preserveProjectionFraming(previous:CameraView,next:CameraView){
   return ![previous,next].some(view=>view==='shore'||view.endsWith('underwater'));

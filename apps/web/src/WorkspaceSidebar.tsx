@@ -1,5 +1,5 @@
 import { Button, Panel, PanelResizeHandle, Row } from './ui';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Activity, useEffect, useState, type ReactNode } from 'react';
 import { Box, Layers, Leaf, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 function preference(key:string,fallback:string){try{return localStorage.getItem('olc-sidebar-'+key)??fallback;}catch{return fallback;}}
@@ -23,9 +23,10 @@ export function WorkspaceSidebar({mobileActive,layers,objects,assets,actions}:{m
         </div>
         <Button variant="ghost" size="icon-sm" className="sidebar-collapse-button max-[1000px]:hidden" aria-label="Collapse sidebar" title="Collapse sidebar" onClick={()=>setCollapsed(true)}><PanelLeftClose size={16}/></Button>
       </Row>
-      <div id="layers-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="layers-tab" hidden={tab!=='layers'}>{layers}</div>
-      <div id="objects-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="objects-tab" hidden={tab!=='objects'}>{objects}</div>
-      <div id="assets-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="assets-tab" hidden={tab!=='assets'}>{assets}</div>
+      {/* Preserve tab state while hidden lists update outside the urgent selection render. */}
+      <div id="layers-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="layers-tab" hidden={tab!=='layers'}><Activity mode={tab==='layers'&&!collapsed?'visible':'hidden'}>{layers}</Activity></div>
+      <div id="objects-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="objects-tab" hidden={tab!=='objects'}><Activity mode={tab==='objects'&&!collapsed?'visible':'hidden'}>{objects}</Activity></div>
+      <div id="assets-tabpanel" className="organizer-tabpanel" role="tabpanel" aria-labelledby="assets-tab" hidden={tab!=='assets'}><Activity mode={tab==='assets'&&!collapsed?'visible':'hidden'}>{assets}</Activity></div>
       <div className="organizer-create">{actions}</div>
     </div>
     {!collapsed && <PanelResizeHandle side="left" width={width} defaultWidth={296} label="Sidebar width" controls="workspace-organizer" onWidthChange={setWidth} />}

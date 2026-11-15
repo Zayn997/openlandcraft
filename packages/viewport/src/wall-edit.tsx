@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
-import { curvePoint, isCircularWall, dragWall, wallLength, type Editor, type Level, type Wall, type WallDragMode } from '@openlandcraft/core';
+import { canEditObject, curvePoint, isCircularWall, resolveWallDrag, wallLength, type Editor, type Level, type Wall, type WallDragMode, type PlanPoint, type WallSnapFeedback } from '@openlandcraft/core';
 import { buildPartGeometry } from './architecture-geometry';
 import { ArchitectureLabel } from './architecture-label';
+import { useShiftKey } from './use-shift-key';
+import { WallSnapGuide } from './wall-snap-guide';
 
 export type WallEditProps = { wall: Wall; level: Level; onStatus: (message: string) => void };
-type Drag = { wall: Wall; mode: WallDragMode; pointer: number; plane: THREE.Plane; origin: THREE.Vector3; screen: [number, number]; moved: boolean; valid: boolean; changed: boolean; release: () => void };
+type Drag = { wall: Wall; walls: Wall[]; delta?: PlanPoint; mode: WallDragMode; pointer: number; plane: THREE.Plane; origin: THREE.Vector3; screen: [number, number]; moved: boolean; valid: boolean; changed: boolean; release: () => void };
 const noRaycast = () => undefined;
 
 export function WallEdit({ wall, walls, level, editor, snapping, topView, onStatus }: WallEditProps & { walls: Wall[]; editor: Editor; snapping: boolean; topView: boolean }) {
@@ -15,12 +17,16 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
   const orbit = useThree(s => s.controls) as unknown as { enabled: boolean } | null;
   const active = useRef<Drag | null>(null);
   const [rejected, setRejected] = useState(false);
+  const [feedback, setFeedback] = useState<WallSnapFeedback>();
+  const {shift,setShift}=useShiftKey();
+  const refresh = useRef<(shift:boolean)=>void>(()=>{});
+  useEffect(()=>{refresh.current(shift);},[shift]);
   const geometry = useMemo(() => buildPartGeometry(wall, walls), [wall, walls]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const cancel = () => {
     const drag = active.current; active.current = null;
     if (!drag) return;
-    editor.cancel(); drag.release(); if (orbit) orbit.enabled = true; setRejected(false);
+    editor.cancel(); drag.release(); if (orbit) orbit.enabled = true; setRejected(false); setFeedback(undefined);
   };
   useEffect(() => {
     const unsubscribe = editor.subscribe(() => { if (active.current && !editor.getSnapshot().gestureLabel) cancel(); });
@@ -36,11 +42,27 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
     const target = event.target as unknown as { setPointerCapture: (id: number) => void; releasePointerCapture: (id: number) => void };
     if (orbit) orbit.enabled = false;
     target.setPointerCapture(event.pointerId);
-    active.current = { wall, mode, pointer: event.pointerId, plane, origin, screen: [event.clientX, event.clientY], moved: false, valid: true, changed: false,
+    setShift(event.shiftKey);
+    const snapshot=editor.getSnapshot();
+    active.current = { wall, walls:walls.filter(w=>w.visible&&canEditObject(snapshot.project,w.id,snapshot.isolatedLayerId)), mode, pointer: event.pointerId, plane, origin, screen: [event.clientX, event.clientY], moved: false, valid: true, changed: false,
       release: () => { try { target.releasePointerCapture(event.pointerId); } catch { /* Already released. */ } } };
     editor.begin(mode === 'move' ? 'Move wall' : mode==='radius'?'Resize wall radius':'Move wall endpoint'); setRejected(false);
-    onStatus(wall.curve?'Drag on the floor plane. Center moves the wall; Radius reshapes it. Escape cancels.':'Drag on the floor plane. Joined corners follow. Escape cancels.');
+    onStatus(wall.curve?'Drag on the floor plane. Hold Shift to constrain center movement. Escape cancels.':'Hold Shift for horizontal/vertical. Highlighted endpoints snap together. Escape cancels.');
   };
+  const preview = (held:boolean) => {
+    const drag=active.current;
+    if(!drag?.delta)return;
+    try {
+      const result=resolveWallDrag(drag.wall,drag.mode,drag.delta,drag.walls,snapping,held), next=result.wall;
+      editor.preview({type:'replace',entity:next});
+      drag.valid=true;drag.changed=JSON.stringify([next.start,next.end,next.curve])!==JSON.stringify([drag.wall.start,drag.wall.end,drag.wall.curve]);setRejected(false);setFeedback(result.feedback);
+      onStatus(`${result.feedback?.endpoint?'Endpoint snap · ':''}${result.feedback?.axis!==undefined?'Shift axis locked · ':''}Wall length ${wallLength(next).toFixed(2)} m. Release to apply; Escape cancels.`);
+    } catch(error) {
+      drag.valid=false;setRejected(true);setFeedback(undefined);
+      onStatus((error instanceof Error?error.message:'Invalid wall edit.')+' Release here cancels the entire drag.');
+    }
+  };
+  refresh.current=preview;
   const move = (event: ThreeEvent<PointerEvent>) => {
     const drag = active.current; if (!drag || drag.pointer !== event.pointerId) return;
     event.stopPropagation();
@@ -51,12 +73,9 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
       const point = event.ray.intersectPlane(drag.plane, new THREE.Vector3());
       if (!point) throw new Error('Keep the pointer on the floor plane.');
       const delta = point.sub(drag.origin).applyAxisAngle(new THREE.Vector3(0, 1, 0), -level.rotation * Math.PI / 180);
-      const next = dragWall(drag.wall, drag.mode, [delta.x, delta.z], snapping);
-      editor.preview({ type: 'replace', entity: next });
-      drag.valid = true; drag.changed = JSON.stringify([next.start, next.end, next.curve]) !== JSON.stringify([drag.wall.start, drag.wall.end, drag.wall.curve]); setRejected(false);
-      onStatus('Wall length ' + wallLength(next).toFixed(2) + ' m. Release to apply; Escape cancels.');
+      drag.delta=[delta.x,delta.z];setShift(event.shiftKey);preview(event.shiftKey);
     } catch (error) {
-      drag.valid = false; setRejected(true);
+      drag.valid = false; drag.delta=undefined; setRejected(true); setFeedback(undefined);
       onStatus((error instanceof Error ? error.message : 'Invalid wall edit.') + ' Release here cancels the entire drag.');
     }
   };
@@ -65,7 +84,7 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
     move(event); event.stopPropagation(); active.current = null;
     if (drag.valid && drag.changed) { editor.commit(); onStatus(wall.curve?'Curved wall updated. It remains one editable object.':'Wall updated. Joined corners and hosted openings were preserved.'); }
     else { editor.cancel(); onStatus(drag.valid ? 'Wall unchanged.' : 'Drag cancelled. Original walls restored.'); }
-    drag.release(); if (orbit) orbit.enabled = true; setRejected(false);
+    drag.release(); if (orbit) orbit.enabled = true; setRejected(false); setFeedback(undefined);
   };
   const events = { onPointerMove: move, onPointerUp: up, onPointerCancel: cancel, onLostPointerCapture: cancel, onClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation(), onDoubleClick: (event: ThreeEvent<MouseEvent>) => event.stopPropagation() };
   const color = rejected ? '#ed775f' : '#d7f29c', top = wall.elevation + wall.height;
@@ -73,7 +92,9 @@ export function WallEdit({ wall, walls, level, editor, snapping, topView, onStat
     ? [{mode:'move',point:wall.curve.center,label:'Center'},{mode:'radius',point:curvePoint(wall.curve,0.5),label:'Radius'},...(!isCircularWall(wall)?[{mode:'start' as const,point:wall.start,label:'Start'},{mode:'end' as const,point:wall.end,label:'End'}]:[])]
     : [{mode:'start',point:wall.start,label:'Start'},{mode:'end',point:wall.end,label:'End'}];
   const middle=wall.curve?curvePoint(wall.curve,0.5):[(wall.start[0]+wall.end[0])/2,(wall.start[1]+wall.end[1])/2];
+  const snapTarget=walls.find(w=>w.id===(feedback?.endpoint??feedback?.nearEndpoint)?.wallId);
   return <group position={level.position} rotation={[0, level.rotation * Math.PI / 180, 0]} userData={{ waterCaptureExclude: true, copyEntityId: wall.id }}>
+    <WallSnapGuide feedback={feedback} height={top+0.25} baseHeight={wall.elevation} targetHeight={snapTarget?snapTarget.elevation+snapTarget.height+0.25:top+0.25} targetBaseHeight={snapTarget?.elevation??wall.elevation}/>
     <mesh geometry={geometry} {...events} onPointerDown={event => down(event, 'move')}>
       <meshBasicMaterial color={color} transparent opacity={0.2} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
       <Edges color={color} lineWidth={2} raycast={noRaycast} />

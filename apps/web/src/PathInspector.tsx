@@ -1,10 +1,11 @@
-import { Button, PointEditor, PropertyRow, ActionBar, ActionRow, CheckboxInput, Field, FieldGrid, FieldMessage, NumberField, PanelBody, PanelHeading, SelectInput, SelectOption, TextInput } from './ui';
+import { PropertiesPanel } from './PropertiesPanel';
+import { Button, PointEditor, ActionBar, ActionRow, CheckboxInput, Field, FieldGrid, FieldMessage, NumberField, SelectInput, SelectOption, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { useEffect, useState } from 'react';
 import { Check, Plus, RotateCcw, Route, Trash2 } from 'lucide-react';
 import { type Editor, type Path } from '@openlandcraft/core';
 import { pathLength, roundedRoutePoints, type PathPoint } from '@openlandcraft/landscape';
-import {SurfaceElevationFields} from './SurfaceElevationFields';
+import { SurfaceElevationFields } from './SurfaceElevationFields';
 
 export function PathInspector({ path, editor, cancel, snapping, onSnapping, onRedraw,onCorner,onAdd }: { path: Path; editor: Editor; cancel: () => void; snapping: boolean; onSnapping: (value: boolean) => void; onRedraw:()=>void;onAdd:()=>void;onCorner:(index:number|null)=>void }) {
   const [draft, setDraft] = useState(path), [error, setError] = useState('');
@@ -16,14 +17,7 @@ export function PathInspector({ path, editor, cancel, snapping, onSnapping, onRe
     try { editor.preview({ type: 'replace', entity: next }); setError(''); }
     catch (error) { setError(error instanceof Error ? error.message : 'The path is invalid.'); }
   };
-  return <PanelBody className="path-inspector">
-    <PanelHeading title={<>{path.name}</>} icon={<><Route size={24} /></>} subtitle={<>{path.bridge?'Bridge · independent bank endpoints':'Editable landscape path'}</>} />
-    <FieldMessage>{path.bridge?'Drag the two numbered bank endpoints to reposition the bridge. Both supports must stay on dry ground.':'Click a numbered corner in the viewer to adjust its rounding. Drag the point to move it.'}</FieldMessage>
-    <div className="path-summary"><strong>{pathLength(roundedRoutePoints(draft)).toFixed(1)} <small>m</small></strong><span>Plan length · {draft.points.length} points</span></div>
-    {!draft.bridge&&<Button variant="outline" className="mb-3" disabled={!!state.gestureLabel} onClick={onRedraw}><Route size={15}/>Redraw path</Button>}
-    <Button variant="outline" className="mb-3" disabled={!!state.gestureLabel} onClick={onAdd}><Plus size={15}/>Draw another path</Button>
-    <Field variant="checkbox"><CheckboxInput aria-label="Snap path points" checked={snapping} onChange={event => onSnapping(event.target.checked)} />Snap to grid, paths and building edges</Field>
-    <FieldMessage>{path.bridge?'Bridge endpoints meet approach paths at ground level. Keep paving and other decks clear of its span.':'Paths join where their surfaces meet. Move or resize either path to update the junction. They remain independent: moving one does not move its neighbors. Courtyards supply the paving inside their boundaries; earlier paths supply the finish elsewhere at overlaps. Select any path in Objects, including a covered path.'}</FieldMessage>
+  return <PropertiesPanel className="path-inspector" title={path.bridge?'Bridge':'Path'} description={`${pathLength(roundedRoutePoints(draft)).toFixed(1)} m · ${draft.points.length} points`}>
     <form onInputCapture={begin} onSubmit={event => { event.preventDefault(); if (!error) editor.commit(); }}>
       <InspectorSection sectionId="pathinspector-path-surface" title={<>Path surface</>}>
         <Field>Name<TextInput aria-label="Path name" required maxLength={80} value={draft.name} onChange={event => change({ ...draft, name: event.target.value })} /></Field>
@@ -47,6 +41,13 @@ export function PathInspector({ path, editor, cancel, snapping, onSnapping, onRe
       </ActionBar>
       <ActionRow><Button variant="destructive" size="sm" type="button" className="delete-button" disabled={!!state.gestureLabel} onClick={() => editor.execute({ type: 'remove', id: path.id }, 'Delete path')}><Trash2 size={14} />Delete path</Button></ActionRow>
     </form>
+    <InspectorSection sectionId="path-editing" title="Editing tools" defaultOpen={false}>
+    <FieldMessage>{path.bridge?'Drag the two numbered bank endpoints to reposition the bridge. Both supports must stay on dry ground.':'Click a numbered corner in the viewer to adjust its rounding. Drag the point to move it.'}</FieldMessage>
+    {!draft.bridge&&<Button variant="outline" className="mb-3" disabled={!!state.gestureLabel} onClick={onRedraw}><Route size={15}/>Redraw path</Button>}
+    <Button variant="outline" className="mb-3" disabled={!!state.gestureLabel} onClick={onAdd}><Plus size={15}/>Draw another path</Button>
+    <Field variant="checkbox"><CheckboxInput aria-label="Snap path points" checked={snapping} onChange={event => onSnapping(event.target.checked)} />Snap to grid, paths and building edges</Field>
+    <FieldMessage>{path.bridge?'Bridge endpoints meet approach paths at ground level. Keep paving and other decks clear of its span.':'Paths join where their surfaces meet. Move or resize either path to update the junction. They remain independent: moving one does not move its neighbors. Courtyards supply the paving inside their boundaries; earlier paths supply the finish elsewhere at overlaps. Select any path in Objects, including a covered path.'}</FieldMessage>
+    </InspectorSection>
     <InspectorSection sectionId="pathinspector-notes-1" title="About this object" defaultOpen={false}><FieldMessage>{path.bridge?'One straight bridge up to 80 m. Its deck, ramps, abutments and rails remain one editable object. Deleting or hiding it preserves the moat and terrain. Bank endpoints remain independent when shorelines change.':'One open path, up to 16 points and 250 m. Deleting it preserves your terrain. Snapping places endpoints; it does not attach them to future building moves.'}</FieldMessage></InspectorSection>
-  </PanelBody>;
+  </PropertiesPanel>;
 }

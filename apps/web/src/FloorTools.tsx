@@ -1,5 +1,6 @@
-import { Button, ActionRow, CheckboxInput, Field, FieldMessage, Panel, PanelBody, PanelHeading, Row, SelectInput, SelectOption, TextInput } from './ui';
-import { ArrowUp, Layers, Package, X } from 'lucide-react';
+import { PropertiesPanel } from './PropertiesPanel';
+import { Button, ActionRow, CheckboxInput, Field, FieldMessage, Panel, Row, SelectInput, SelectOption, TextInput } from './ui';
+import { ArrowUp, Package, X } from 'lucide-react';
 import { InspectorSection } from './InspectorSection';
 import { createUnit, floorHeight, isBuildingPart, ownerLevel, scopeParts, unitForPart, type Editor, type Project } from '@openlandcraft/core';
 import { useState } from 'react';
@@ -29,7 +30,7 @@ export function ArchitectureGroupInspector({project,editor,id,select,guard}:Pick
   const entity=project.entities.find(e=>e.id===id);
   if(!entity||(entity.kind!=='unit'&&entity.kind!=='building'))return null;
   const children=entity.kind==='unit'?project.entities.filter(e=>entity.memberIds.includes(e.id)):project.entities.filter(e=>e.kind==='level'&&e.buildingId===entity.id).sort((a,b)=>a.kind==='level'&&b.kind==='level'?a.position[1]-b.position[1]:0);
-  return <PanelBody><PanelHeading title={<>{entity.name}</>} icon={<>{entity.kind==='unit'?<Package size={18}/>:<Layers size={18}/>}</>} subtitle={<>{entity.kind==='unit'?'Architectural unit':'Building'}</>} />
+  return <PropertiesPanel title={entity.kind==='unit'?'Architectural unit':'Building'}>
     <InspectorSection sectionId="group-object" title="Object"><Field>Name<TextInput aria-label="Group name" defaultValue={entity.name} maxLength={80} onBlur={e=>{const name=e.target.value.trim();if(name&&name!==entity.name)guard(()=>editor.execute({type:'replace',entity:{...entity,name}},'Rename '+entity.kind));}}/></Field></InspectorSection>
     <InspectorSection sectionId="group-contents" title={<>{entity.kind==='unit'?'Elements':'Floors'}<span>{children.length}</span></>}>
     {children.map(e=><button key={e.id} className="part-link" onClick={()=>select(e.id)}>{e.name}<span>{e.kind}</span></button>)}
@@ -38,5 +39,5 @@ export function ArchitectureGroupInspector({project,editor,id,select,guard}:Pick
     {entity.kind==='unit'&&<button className="add-object" disabled={!!editor.getSnapshot().gestureLabel} onClick={()=>guard(()=>{editor.execute({type:'ungroup',id},'Ungroup unit');select(entity.parentId);})}>Ungroup · keep elements</button>}
     <ActionRow><Button variant="destructive" size="sm" className="delete-button" disabled={!!editor.getSnapshot().gestureLabel} onClick={()=>guard(()=>editor.execute({type:'remove',id},`Delete ${entity.kind} and contents`))}>Delete {entity.kind} and its contents</Button></ActionRow>
     <InspectorSection sectionId="group-notes" title="About this group" defaultOpen={false}><FieldMessage>{entity.kind==='unit'?'This unit repeats as editable walls, floors and openings. Its copies are independent.':'Select a floor to edit or duplicate it above.'}</FieldMessage></InspectorSection>
-  </PanelBody>;
+  </PropertiesPanel>;
 }

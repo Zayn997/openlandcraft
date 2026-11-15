@@ -65,7 +65,7 @@ export function RepeatSelection({editor,id,onSelect,onError}:{editor:Editor;id:s
  if(!p||!draft)return null;
  const action=(run:()=>void)=>{try{run();}catch(e){onError((e as Error).message);}};
  const source=project.entities.find(e=>e.id===p.sourceId)!;
- return <InspectorSection sectionId="repeat-selection" title={owner?'Repeated object':'Shared repeat source'} className="mx-panel">
+ return <InspectorSection sectionId="repeat-selection" title={owner?'Repeated object':'Shared repeat source'} className="mx-panel" defaultOpen={false}>
   {patterns.length>1&&<Field>Repeat<SelectInput aria-label="Selected repeat" value={p.id} onValueChange={id=>{setChoice(id);setDraft(patterns.find(p=>p.id===id)!);}}>{patterns.map(p=><SelectOption key={p.id} value={p.id}>{p.name}</SelectOption>)}</SelectInput></Field>}
   <FieldMessage>{owner?`Linked to ${source.name}. Edit this object below to keep a local override. Other fields follow the source.`:'Edits to this source update its linked copies. Individual overrides are preserved.'}</FieldMessage>
   {owner&&<Row className="flex-wrap"><Button type="button" variant="ghost" onClick={()=>onSelect(p.sourceId)}>Edit shared source</Button><Button type="button" variant="ghost" disabled={!!editor.getSnapshot().gestureLabel} onClick={()=>action(()=>editor.execute({type:'resetRepeatMember',id},'Reset repeat override'))}>Reset overrides</Button><Button type="button" variant="ghost" disabled={!!editor.getSnapshot().gestureLabel} onClick={()=>action(()=>editor.execute({type:'detachRepeatMember',id},'Detach repeated object'))}>Detach object</Button></Row>}

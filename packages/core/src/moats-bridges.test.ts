@@ -7,6 +7,12 @@ import {serializeProject,deserializeProject,saveLocal,loadLocal} from '@openland
 const base=()=>createSite({name:'Castle moat',width:100,depth:100,resolution:129,preset:'flat'});
 const study=()=>{const p=base(),moat=createMoat(p);p.entities.push(moat);const bridge=createBridge(p,moat.id);p.entities.push(bridge);return {p,moat,bridge};};
 describe('editable ring moat and bank-to-bank bridges',()=>{
+  it.each([[180,160],[200,200]])('creates a valid bounded starter on a %s × %s m site',(width,depth)=>{
+    const p=createSite({name:'Large castle site',width,depth,resolution:129,preset:'flat'}),moat=createMoat(p);
+    expect(Math.max(...moat.points.map(([x,z])=>Math.hypot(x,z)))).toBeLessThanOrEqual(56.000001);
+    expect(lakeWaterDistance(moat,0,0)).toBeLessThan(-40);
+    expect(()=>parseProject({...p,entities:[moat]})).not.toThrow();
+  });
   it('preserves the authored dry island, carves only water and banks, and restores terrain on hide/delete',()=>{
     const {p,moat}=study(),before=[...p.site.terrain.heights],evaluated=evaluateProject(p);
     expect(lakeWaterDistance(moat,0,0)).toBeLessThan(-20);expect(lakeWaterDistance(moat,32,0)).toBeGreaterThan(3);

@@ -18,3 +18,25 @@
 @import "./inspector.css" layer(legacy);
 @import "./ui/theme.css";
 @import "tailwindcss/utilities.css" layer(utilities) source("./");
+
+@layer utilities {
+  /* Properties uses the editor's UI type scale, including legacy feature panels. */
+  .inspector-scroll :is(h2,h3,label,.ui-field-message,.opening-summary dt,.opening-summary dd) {
+    font-family:var(--font-sans);
+    font-size:var(--text-ui);
+    line-height:1.5;
+    letter-spacing:normal;
+  }
+  .properties-panel { font:var(--text-ui)/1.5 var(--font-sans); }
+  .properties-panel .properties-heading { min-height:32px; margin-bottom:12px; }
+  .properties-panel .properties-heading h2 { margin:0; font:600 var(--text-ui)/1.5 var(--font-sans); }
+  .properties-panel .properties-description { margin:0 0 12px; }
+  .properties-panel .opening-edit-fields { gap:10px; }
+  .properties-panel .ui-field-grid { grid-template-columns:repeat(2,minmax(0,1fr)); margin:10px 0; }
+  .properties-panel .ui-field-grid .ui-field + .ui-field,
+  .properties-panel .opening-edit-fields > .ui-field + .ui-field { margin-top:0; }
+  .properties-panel > form { margin:0 0 14px; }
+  .properties-panel .properties-actions { display:flex; flex-direction:column; gap:8px; }
+  .properties-panel .properties-actions button { white-space:normal; }
+  .properties-panel :is(.opening-summary dd,.path-summary strong) { font-size:var(--text-ui); }
+}

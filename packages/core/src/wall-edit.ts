@@ -3,6 +3,29 @@ import { wallSchema, type Wall } from './model';
 import { curvePoint, updateCurvedWall, isCircularWall } from './curved-walls';
 
 export type WallDragMode = 'move' | 'start' | 'end' | 'radius';
+/** Height-only edit; dependent walls, roofs and stair connections are resolved by the command. */
+export function resizeWallHeight(wall: Wall, delta: number, snapping: boolean): Wall {
+  if (!Number.isFinite(delta)) throw new Error('Use a finite wall height.');
+  const value = wall.height + delta;
+  const height = Number((snapping ? Math.round(value * 4) / 4 : value).toFixed(10));
+  const next = { ...wall, height };
+  if (!wallSchema.safeParse(next).success) throw new Error('Keep wall height between 0.2 and 30 m.');
+  const issue = architectureIssue([{ ...next, junctions: undefined }]);
+  if (issue) throw new Error(issue);
+  return next;
+}
+/** Move the lower edge while retaining the current upper edge. */
+export function resizeWallBase(wall: Wall, delta: number, snapping: boolean): Wall {
+  if (!Number.isFinite(delta)) throw new Error('Use a finite wall base elevation.');
+  const value = wall.elevation + delta;
+  const elevation = Number((snapping ? Math.round(value * 4) / 4 : value).toFixed(10));
+  const height = Number((wall.elevation + wall.height - elevation).toFixed(10));
+  const next = { ...wall, elevation, height };
+  if (!wallSchema.safeParse(next).success) throw new Error('Keep the wall base between −10 and 30 m and its height between 0.2 and 30 m.');
+  const issue = architectureIssue([{ ...next, junctions: undefined }]);
+  if (issue) throw new Error(issue);
+  return next;
+}
 /** Local level-plane delta from the original grab, never the previous preview. */
 export function dragWall(wall: Wall, mode: WallDragMode, delta: PlanPoint, snapping: boolean): Wall {
   if (!delta.every(Number.isFinite)) throw new Error('Keep the pointer on the wall editing plane.');

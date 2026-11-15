@@ -82,7 +82,13 @@ export function repeatIssue(project:RepeatDocument):string|null{
   if(new Set(p.excluded??[]).size!==(p.excluded??[]).length)return 'Repeat exclusions must be unique.';
   for(let i=0;i<layout.count;i++)if(!p.excluded?.includes(i)){
    const member=repeatMember(source,p,i),existing=project.entities.find(e=>e.id===member.id);
-   if(members.has(member.id)||!existing||JSON.stringify(existing)!==JSON.stringify(member))return 'Repeat members must match their source, path and saved overrides.';
+   // Trigonometric arc samples can differ by a few ULPs across JS runtimes.
+   // Retain strict authored-field checks while allowing sub-nanometer transform noise.
+   const matches=existing&&(existing.kind==='block'||existing.kind==='instance')&&(()=>{
+    const {position,rotation,...fields}=existing,{position:expectedPosition,rotation:expectedRotation,...expectedFields}=member;
+    return position.every((v,i)=>Math.abs(v-expectedPosition[i])<=1e-9)&&Math.abs(rotation-expectedRotation)<=1e-9&&JSON.stringify(fields)===JSON.stringify(expectedFields);
+   })();
+   if(members.has(member.id)||!matches)return 'Repeat members must match their source, path and saved overrides.';
    members.add(member.id);
    if(member.kind==='instance'){
     const asset=project.assets.find(a=>a.id===member.assetId);if(!asset)return 'A repeated object model is missing.';

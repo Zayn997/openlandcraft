@@ -1,4 +1,5 @@
-import { Button, PointEditor, ActionBar, ActionRow, ColorInput, Field, FieldGrid, FieldMessage, NumberField, PanelForm, PanelHeading, Row, TextInput } from './ui';
+import { PropertiesForm } from './PropertiesPanel';
+import { Button, PointEditor, ActionBar, ActionRow, ColorInput, Field, FieldGrid, FieldMessage, NumberField, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { useEffect, useState } from 'react';
 import { Check, Plus, RotateCcw, Trash2, Waves } from 'lucide-react';
@@ -18,8 +19,7 @@ export function RiverInspector({ river, editor, cancel, playing, onReset, onStep
       editor.preview({ type: 'replace', entity: next }); setError('');
     } catch (error) { setError(error instanceof Error ? error.message : 'The river is invalid.'); }
   };
-  return <PanelForm className="river-inspector" onInputCapture={()=>{if(!editor.getSnapshot().gestureLabel)editor.begin('Edit river');}} onSubmit={(event) => { event.preventDefault(); if (!error) editor.commit(); }}>
-    <PanelHeading title={<>{river.name}</>} icon={<><Waves size={24} /></>} subtitle={<>Editable river · upstream → downstream</>} />
+  return <PropertiesForm title="River" className="river-inspector" onInputCapture={()=>{if(!editor.getSnapshot().gestureLabel)editor.begin('Edit river');}} onSubmit={(event) => { event.preventDefault(); if (!error) editor.commit(); }}>
     <InspectorSection sectionId="riverinspector-river-shape" title={<>River</>}><Field>Name<TextInput aria-label="River name" required maxLength={80} value={draft.name} onChange={(event) => change({ ...draft, name: event.target.value })} /></Field><FieldGrid columns={2}>
       <NumberField label="River width" value={draft.width} min={minimumWidth} max={12} onChange={(width) => change({ ...draft, width })} />
       <NumberField label="River depth" value={draft.depth} min={0.2} max={5} onChange={(depth) => change({ ...draft, depth })} />
@@ -45,5 +45,5 @@ export function RiverInspector({ river, editor, cancel, playing, onReset, onStep
     <ActionBar pending={!!(state.gestureLabel)}><div><span className="status-dot" />{error ? 'Resolve the invalid edit' : state.gestureLabel ? 'Previewing river changes' : 'All changes applied'}</div><Button variant="default" type="submit" className="primary-button" disabled={!state.gestureLabel || !!error}><Check size={15} />Apply river changes</Button><Button variant="ghost" type="button" className="cancel-button" disabled={!state.gestureLabel} onClick={cancel}><RotateCcw size={13} />Cancel preview<span>Esc</span></Button></ActionBar>
     <ActionRow><Button variant="destructive" size="sm" type="button" className="delete-button" disabled={!!state.gestureLabel} onClick={() => editor.execute({ type: 'remove', id: river.id }, 'Delete river')}><Trash2 size={14} />Delete river</Button></ActionRow>
     <InspectorSection sectionId="riverinspector-notes-1" title="About this object" defaultOpen={false}><FieldMessage>Carving is derived from your sculpted ground. Moving, hiding, or deleting this river preserves independent terrain edits. Flow is a visual preview; this version has one unbranched channel.</FieldMessage></InspectorSection>
-  </PanelForm>;
+  </PropertiesForm>;
 }

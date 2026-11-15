@@ -3,7 +3,7 @@ import {architecturalMaterials,architecturalMaterialUsers,architecturalMaterialS
 import {InspectorSection} from './InspectorSection';
 import {Button,ColorInput,Field,FieldMessage,NumericInput,Row,SelectInput,SelectOption,TextInput} from './ui';
 
-export function ArchitecturalMaterialFields({project,editor,ids}:{project:Project;editor:Editor;ids:string[]}){
+export function ArchitecturalMaterialFields({project,editor,ids,compact=false}:{project:Project;editor:Editor;ids:string[];compact?:boolean}){
  const parts=architecturalMaterialTargets(project,ids),state=editor.getSnapshot(),library=architecturalMaterials(project),common=parts[0]?.materialId??'color',mixed=parts.some(p=>(p.materialId??'color')!==common);
  const [chosen,setChosen]=useState(mixed?'mixed':common),[values,setValues]=useState({name:'',color:'#ffffff',scale:'1',roughness:'.8'}),[editingId,setEditingId]=useState<string|null>(null),[issue,setIssue]=useState('');
  const editing=!!editingId&&state.gestureLabel==='Edit shared architectural material',blocked=!!state.gestureLabel&&!editing,material=library.find(m=>m.id===chosen),users=architecturalMaterialUsers(project,chosen);
@@ -13,11 +13,11 @@ export function ArchitecturalMaterialFields({project,editor,ids}:{project:Projec
  const run=(action:()=>void)=>{try{action();setIssue('');}catch(error){setIssue(error instanceof Error?error.message:'Could not update material.');}};
  const begin=()=>{if(!material)return;editor.begin('Edit shared architectural material');setEditingId(material.id);setValues({name:material.name,color:material.color,scale:String(material.scale),roughness:String(material.roughness)});setIssue('');};
  const change=(next:typeof values)=>{setValues(next);run(()=>{const base=architecturalMaterials(editor.getSnapshot().project).find(m=>m.id===editingId)!;const candidate=architecturalMaterialSchema.safeParse({...base,name:next.name,color:next.color,scale:next.scale.trim()?Number(next.scale):NaN,roughness:next.roughness.trim()?Number(next.roughness):NaN});if(!candidate.success)throw new Error('Use a name, texture size 0.1–20 m and roughness 0.05–1.');editor.preview({type:'architecturalMaterial',material:candidate.data});});};
- return <InspectorSection sectionId="architectural-material" title="Material" className="mx-panel">
+ return <InspectorSection sectionId="architectural-material" title="Material" className={compact?'':'mx-panel'} defaultOpen={!compact}>
   <Field>Shared material<SelectInput aria-label="Architectural material" value={chosen} disabled={blocked||editing} onValueChange={id=>{setChosen(id);setIssue('');}}>
    {mixed&&<SelectOption value="mixed" disabled>Mixed materials</SelectOption>}<SelectOption value="color">Object color · no texture</SelectOption>{library.map(m=><SelectOption key={m.id} value={m.id}>{m.name}</SelectOption>)}
   </SelectInput></Field>
-  <FieldMessage>{parts.length===1?'Applies to '+parts[0].name: 'Applies to '+parts.length+' architectural elements in this selection.'}</FieldMessage>
+  {!compact&&<FieldMessage>{parts.length===1?'Applies to '+parts[0].name: 'Applies to '+parts.length+' architectural elements in this selection.'}</FieldMessage>}
   <Button disabled={blocked||editing||chosen==='mixed'||(!mixed&&chosen===common)} onClick={()=>run(()=>editor.execute({type:'assignArchitecturalMaterial',ids:parts.map(p=>p.id),materialId:chosen==='color'?null:chosen},'Apply shared material'))}>Apply material</Button>
   {material&&<>
    <FieldMessage>{users.length} object{users.length===1?' uses':'s use'} this material. Texture size {material.scale} m per repeat.</FieldMessage>
@@ -30,7 +30,7 @@ export function ArchitecturalMaterialFields({project,editor,ids}:{project:Projec
     <Row><Button type="submit" disabled={!!issue}>Apply shared changes</Button><Button variant="ghost" onClick={()=>{editor.cancel();setEditingId(null);setIssue('');}}>Cancel material changes</Button></Row>
    </form>}
   </>}
-  {!material&&!mixed&&<FieldMessage>Choose stone, timber or roof slate to add a shared textured finish. Object color keeps the original flat appearance.</FieldMessage>}
+  {!compact&&!material&&!mixed&&<FieldMessage>Choose stone, timber or roof slate to add a shared textured finish. Object color keeps the original flat appearance.</FieldMessage>}
   {issue&&<FieldMessage role="alert" tone="error">{issue}</FieldMessage>}
  </InspectorSection>;
 }

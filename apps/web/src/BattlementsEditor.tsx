@@ -14,7 +14,7 @@ export function BattlementsEditor({wall,editor,onStatus}:{wall:Wall;editor:Edito
   const changed=JSON.stringify(battlements)!==JSON.stringify(wall.battlements);
   let issue='';if(changed&&!busy)try{applyCommand(editor.getSnapshot().project,{type:'replace',entity:candidate});}catch(error){issue=error instanceof Error?error.message:'Invalid battlements.';}
   const layout=battlementLayout(candidate);
-  return <InspectorSection sectionId="wall-battlements" title="Battlements">
+  return <InspectorSection sectionId="wall-battlements" title="Battlements" defaultOpen={false}>
     <form onSubmit={e=>{e.preventDefault();if(changed&&!issue&&!busy)try{editor.execute({type:'replace',entity:candidate},enabled?'Edit battlements':'Remove battlements');onStatus(enabled?'Battlements applied. They follow this wall automatically.':'Battlements removed.');}catch(error){onStatus(error instanceof Error?error.message:'Could not edit battlements.');}}}>
       <fieldset className="opening-edit-fields" disabled={busy}>
         <Field variant="checkbox"><CheckboxInput checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Enable battlements</Field>

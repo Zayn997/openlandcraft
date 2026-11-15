@@ -1,9 +1,10 @@
-import {useEffect,useState} from 'react';
-import {ZodError} from 'zod';
-import {applyCommand,canEditObject,createHedge,groundHeight,mirrorOwner,type Editor,type Hedge,type Project} from '@openlandcraft/core';
-import {pathLength,hedgeRoute,hedgeCornerAmounts,type PathPoint} from '@openlandcraft/landscape';
-import {Button,CheckboxInput,ColorInput,Field,FieldGrid,FieldMessage,NumberField,Panel,PanelBody,PanelHeading,PointEditor,Row,SelectInput,SelectOption,TextInput} from './ui';
-import {InspectorSection} from './InspectorSection';
+import { PropertiesPanel } from './PropertiesPanel';
+import { useEffect, useState } from 'react';
+import { ZodError } from 'zod';
+import { applyCommand, canEditObject, createHedge, groundHeight, mirrorOwner, type Editor, type Hedge, type Project } from '@openlandcraft/core';
+import { pathLength, hedgeRoute, hedgeCornerAmounts, type PathPoint } from '@openlandcraft/landscape';
+import { Button, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, Panel, PanelHeading, PointEditor, Row, SelectInput, SelectOption, TextInput } from './ui';
+import { InspectorSection } from './InspectorSection';
 const message=(e:unknown)=>e instanceof ZodError?e.issues[0]?.message??'Choose valid hedge dimensions.':(e as Error).message;
 function HedgeFields({value,site,onChange}:{value:Hedge;site:Project['site'];onChange:(h:Hedge)=>void}){
  const change=(patch:Partial<Hedge>)=>onChange({...value,...patch});
@@ -37,16 +38,18 @@ export function useHedgeTool(editor:Editor,snapping:boolean,onSnapping:(v:boolea
 export function HedgeInspector({hedge,editor,cancel,snapping,onSnapping,onRedraw,onCorner}:{onCorner:(i:number)=>void;hedge:Hedge;editor:Editor;cancel:()=>void;snapping:boolean;onSnapping:(v:boolean)=>void;onRedraw:()=>void}){
  const [draft,setDraft]=useState(hedge),[error,setError]=useState('');useEffect(()=>setDraft(hedge),[hedge]);const state=editor.getSnapshot();
  const change=(next:Hedge)=>{setDraft(next);if(!editor.getSnapshot().gestureLabel)editor.begin('Edit clipped hedge');try{editor.preview({type:'replace',entity:next});setError('');}catch(e){setError(message(e));}};
- return <PanelBody><PanelHeading title={hedge.name} subtitle={`${pathLength(hedgeRoute(draft)).toFixed(1)} m · Clipped hedge${draft.closed?' loop':''}`}/>
+ return <PropertiesPanel title="Clipped hedge" description={`${pathLength(hedgeRoute(draft)).toFixed(1)} m${draft.closed?' · Closed loop':''}`}>
+  <HedgeFields value={draft} site={state.project.site} onChange={change}/>
+  <InspectorSection sectionId="hedge-editing" title="Editing tools" defaultOpen={false}>
   <FieldMessage>Click a numbered anchor to open its rounding slider; drag it to move the corner. Width, height and foliage remain one editable object. Plants regenerate clear of hedge roots; walking routes treat the hedge as a barrier.</FieldMessage>
   <Button type="button" variant="outline" disabled={!!state.gestureLabel} onClick={onRedraw}>Redraw hedge</Button>
   <Field variant="checkbox"><CheckboxInput aria-label="Snap hedge points" checked={snapping} onChange={e=>onSnapping(e.target.checked)}/>Snap hedge points to 0.5 m</Field>
-  <HedgeFields value={draft} site={state.project.site} onChange={change}/>
+  </InspectorSection>
   <InspectorSection sectionId="hedge-control-points" title="Hedge control points" defaultOpen={false}>
    {draft.points.map((p,i)=><PointEditor key={i} title={`Point ${i+1}`} actions={<>{(draft.closed||i>0&&i<draft.points.length-1)&&<Button type="button" variant="ghost" disabled={!!state.gestureLabel} onClick={()=>onCorner(i)}>Round corner</Button>}<Button type="button" variant="ghost" disabled={draft.points.length>=16||!draft.closed&&i===draft.points.length-1} aria-label={`Insert after hedge point ${i+1}`} onClick={()=>{const points=structuredClone(draft.points),q=points[(i+1)%points.length],cornerRounding=[...hedgeCornerAmounts(draft)];points.splice(i+1,0,[(p[0]+q[0])/2,(p[1]+q[1])/2]);cornerRounding.splice(i+1,0,0);change({...draft,points,cornerRounding});}}>+</Button><Button type="button" variant="ghost" disabled={draft.points.length<=(draft.closed?3:2)} aria-label={`Remove hedge point ${i+1}`} onClick={()=>change({...draft,points:draft.points.filter((_,j)=>i!==j),cornerRounding:hedgeCornerAmounts(draft).filter((_,j)=>i!==j).map((v,k,a)=>!draft.closed&&(k===0||k===a.length-1)?0:v)})}>−</Button></>}><FieldGrid columns={2}>{p.map((v,axis)=><NumberField key={axis} label={`Hedge point ${i+1} ${axis===0?'X':'Z'}`} value={v} min={-100} max={100} onChange={n=>{const points=structuredClone(draft.points);points[i][axis]=n;change({...draft,points});}}/>)}</FieldGrid></PointEditor>)}
   </InspectorSection>
   {error&&<FieldMessage tone="error" role="alert">{error}</FieldMessage>}
   <Row><Button type="button" disabled={!state.gestureLabel||!!error} onClick={()=>editor.commit()}>Apply hedge changes</Button><Button type="button" variant="ghost" disabled={!state.gestureLabel} onClick={cancel}>Cancel preview</Button></Row>
   <Button type="button" variant="destructive" disabled={!!state.gestureLabel} onClick={()=>editor.execute({type:'remove',id:hedge.id},'Delete hedge')}>Delete hedge</Button>
- </PanelBody>;
+ </PropertiesPanel>;
 }

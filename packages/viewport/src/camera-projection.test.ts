@@ -1,8 +1,20 @@
 import {describe,it,expect} from 'vitest';
-import {OrthographicCamera,PerspectiveCamera,Vector2,Vector3,Raycaster} from 'three';
-import {cameraViewHeight,projectionCamera,fitOrthographicCamera,worldUnitsPerPixel,preserveProjectionFraming} from './camera-projection';
+import {Box3,OrthographicCamera,PerspectiveCamera,Vector2,Vector3,Raycaster} from 'three';
+import {cameraViewHeight,projectionCamera,fitOrthographicCamera,worldUnitsPerPixel,preserveProjectionFraming,overviewCameraPose} from './camera-projection';
 
 describe('3D and axonometric projection',()=>{
+  it('resets to an overview that contains the site and tall castle in either projection and a narrow viewport',()=>{
+    const bounds=new Box3(new Vector3(-90,-12,-80),new Vector3(90,60,80));
+    for(const projection of ['perspective','orthographic'] as const)for(const aspect of [.5,1.2,2]){
+      const pose=overviewCameraPose(bounds,projection,aspect);
+      const source=new PerspectiveCamera(42,aspect,.1,1500);source.position.copy(pose.position);source.lookAt(pose.target);source.updateMatrixWorld();
+      const camera=projectionCamera(source,projection,pose.target,aspect);
+      for(const x of [-90,90])for(const y of [-12,60])for(const z of [-80,80]){
+        const point=new Vector3(x,y,z).project(camera);
+        expect(Math.abs(point.x)).toBeLessThan(1);expect(Math.abs(point.y)).toBeLessThan(1);expect(Math.abs(point.z)).toBeLessThan(1);
+      }
+    }
+  });
   it('preserves editing zoom but reframes when entering or leaving a water camera',()=>{
     expect(preserveProjectionFraming('perspective','axonometric')).toBe(true);
     expect(preserveProjectionFraming('top','axonometric')).toBe(true);

@@ -1,9 +1,15 @@
 import { Button, Panel, PanelHeading, FieldMessage } from './ui';
 import type {ReactNode} from 'react';
 import {Droplets,MousePointer2,Plus} from 'lucide-react';
+import { InspectorSection } from './InspectorSection';
+import { Row } from './ui';
 
 export type InlandWaterType='river'|'lake';
 export function WaterSystem({type,onType,children,onDraw,onAdd,drawing,existing,onSelectExisting,canDive,diving,onDive,onExitDive,onAddMoat}:{onAddMoat:()=>void;type:InlandWaterType;onType:(type:InlandWaterType)=>void;children?:ReactNode;onDraw:()=>void;onAdd:()=>void;drawing:boolean;existing?:{id:string;name:string};onSelectExisting:(id:string)=>void;canDive:boolean;diving:boolean;onDive:()=>void;onExitDive:()=>void}){
+  if(children)return <>{children}<InspectorSection sectionId="water-tools" title="Water tools" defaultOpen={false} className="mx-panel">
+    <Row><Button variant="secondary" aria-pressed={type==='river'} onClick={()=>onType('river')}>River</Button><Button variant="secondary" aria-pressed={type==='lake'} onClick={()=>onType('lake')}>Lake</Button></Row>
+    {existing&&<Row wrap className="mt-2"><Button variant="secondary" disabled={!canDive||drawing} onClick={onDive}>Dive into {type}</Button>{diving&&<Button variant="ghost" onClick={onExitDive}>Return to 3D</Button>}</Row>}
+  </InspectorSection></>;
   return <Panel className="water-system">
     <PanelHeading icon={<Droplets size={18}/>} title={<>Water System</>} subtitle={<>Shape inland water</>} />
     <div className="water-type-tabs" role="tablist" aria-label="Water type">{(['river','lake'] as const).map(value=><button key={value} id={`water-type-${value}`} type="button" role="tab" tabIndex={type===value?0:-1} aria-selected={type===value} aria-controls="water-type-panel" onClick={()=>onType(value)} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'river':event.key==='End'?'lake':type==='river'?'lake':'river';onType(next);(event.currentTarget.parentElement?.querySelector(`#water-type-${next}`) as HTMLButtonElement|null)?.focus();}}>{value==='river'?'River':'Lake'}</button>)}</div>

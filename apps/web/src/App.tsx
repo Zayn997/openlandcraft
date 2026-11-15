@@ -1,30 +1,31 @@
-import {joineryDraft,joineryValue} from './OpeningJoineryFields';
-import {hedgeCornerAmounts} from '@openlandcraft/landscape';
-import {useHedgeTool,HedgeInspector} from './HedgeTools';
-import {MirrorPanel,MirrorSelection,type MirrorRequest} from './MirrorTools';
-import {mirrorSources,repeatOwner,type MirrorRule} from '@openlandcraft/core';
-import {useRepeatTool,RepeatSelection} from './RepeatTools';
-import {useTowerTool,TowerSelection} from './TowerTools';
-import {repeatSources} from '@openlandcraft/core';
-import {ArchitecturalMaterialFields} from './ArchitecturalMaterialFields';
+import { PropertiesPanel, PropertiesForm } from './PropertiesPanel';
+import { joineryDraft, joineryValue } from './OpeningJoineryFields';
+import { hedgeCornerAmounts } from '@openlandcraft/landscape';
+import { useHedgeTool, HedgeInspector } from './HedgeTools';
+import { MirrorPanel, MirrorSelection, type MirrorRequest } from './MirrorTools';
+import { mirrorSources, repeatOwner, type MirrorRule } from '@openlandcraft/core';
+import { useRepeatTool, RepeatSelection } from './RepeatTools';
+import { useTowerTool, TowerSelection } from './TowerTools';
+import { repeatSources } from '@openlandcraft/core';
+import { ArchitecturalMaterialFields } from './ArchitecturalMaterialFields';
 import { upgradeLibraryFish } from './fish-upgrade';
 import { isBirdAsset, isFishAsset, isGroundCharacterAsset } from '@openlandcraft/core';
 import { DuplicateAbovePanel } from './DuplicateAbovePanel';
-import {measured,type AppDiagnostics} from './app-diagnostics';
-import {createViewportMetricsSource,RendererInfo} from './viewport-metrics';
+import { measured, type AppDiagnostics } from './app-diagnostics';
+import { createViewportMetricsSource, RendererInfo } from './viewport-metrics';
 import { ProjectName } from './ProjectName';
 import { ViewportToolbar, type CameraView } from './ViewportToolbar';
-import type {CameraProjection} from '@openlandcraft/viewport';
+import type { CameraProjection } from '@openlandcraft/viewport';
 import { ViewportStatusBar } from './ViewportStatusBar';
 import { PathDrawingPanel } from './PathDrawingPanel';
 import { CreationMenu } from './CreationMenu';
 import { ArchitectureTools, type ArchitectureTool } from './ArchitectureTools';
-import {createStairs,DEFAULT_STAIRS,DEFAULT_SPIRAL,createSpiralStairs,spiralStairsForTower,spiralTowerDimensions,type StairShape,type StairDrawingDimensions} from '@openlandcraft/core';
+import { createStairs, DEFAULT_STAIRS, DEFAULT_SPIRAL, createSpiralStairs, spiralStairsForTower, spiralTowerDimensions, type StairShape, type StairDrawingDimensions } from '@openlandcraft/core';
 import { resolveDrawingLevel } from './drawing-level';
 import { useEditorEscape } from './use-editor-escape';
 import { createDrawnSurface, drawingPoint } from '@openlandcraft/core';
-import {conicalRoofForTower,createConicalRoof,isCircularWall,snapRoofDrawingPoint,type RoofShape} from '@openlandcraft/core';
-import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, PanelBody, PanelForm, PanelHeading, PropertyRow, RangeInput, Row, TextInput } from './ui';
+import { conicalRoofForTower, createConicalRoof, isCircularWall, snapRoofDrawingPoint, type RoofShape } from '@openlandcraft/core';
+import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, Input, NumberField, PropertyRow, RangeInput, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
 import { InspectorPanel } from './InspectorPanel';
 import { canEditObject, objectLayer } from '@openlandcraft/core';
@@ -33,112 +34,24 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { AssetsPanel } from './AssetsPanel';
 import { AboutCredits } from './AboutCredits';
 import { usePlantPlacement } from './use-plant-placement';
-import {useStairAttachment} from './StairAttachment';
-import {OutlineEditor} from './OutlineEditor';
-import type {OutlineHandle} from '../../../packages/viewport/src/outline-edit';
-import {WallEditor} from './WallEditor';
-import {OpeningSelectionSummary} from './OpeningSelection';
-import {OpeningEditor} from './OpeningEditor';
-import {openingAtPoint, type OpeningSettings, type WallHit, type Level} from '@openlandcraft/core';
-import {OpeningTools, type OpeningDimensions} from './OpeningTools';
-import {connectCurvedWall,snapCurveDrawingPoint,createCurvedWall,createWallChain,snapWallPoint,type PlanPoint,type Wall,type WallShape} from '@openlandcraft/core';
-import {applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, selectionDelete, copySelection, pasteSelection, type EditorClipboard} from '@openlandcraft/core';
-import {FloorTools,ArchitectureGroupInspector} from './FloorTools';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  ArrowUp,
-  ArrowDown,
-  Box,
-  DoorOpen,
-  PanelsTopLeft,
-  Check,
-  Copy,
-  Equal,
-  Focus,
-  Grid2X2,
-  Layers,
-  Leaf,
-  Mountain,
-  MousePointer2,
-  Plus,
-  Redo2,
-  RotateCcw,
-  Route,
-  Droplets,
-  Save,
-  Settings2,
-  Sparkles,
-  Trash2,
-  Undo2,
-  Waves,
-  X,
-} from "lucide-react";
-import {
-  Editor,
-  createProject,
-  createBuilding,
-  createRiver,
-  createDrawnPath,
-  createCharacterRoute,
-  characterWalkingPath,
-  createLake, createMoat, createBridge,
-  createRegion,
-  isRegion,
-  snapPathPoint,
-  createOcean,
-  encodeGlb,
-  evaluateProject,
-  layerDisplayProject,
-  groundHeight,
-  parseProject,
-  snap,
-  MAX_GLB_BYTES,
-  type Asset,
-  type Instance,
-  type Block,
-  type Entity,
-  type Ocean,
-  type Path,
-} from "@openlandcraft/core";
-import {
-  deserializeProject,
-  loadLocal,
-  saveLocal,
-  serializeProject,
-  MAX_PROJECT_BYTES,
-} from "@openlandcraft/project";
-import {
-  Viewport,
-  underwaterCamera,
-  inlandWaterCamera,
-  validateModels,
-  type TransformMode,
-  type ViewportMetrics,
-} from "@openlandcraft/viewport";
-import {
-  DEFAULT_BRUSH,
-  MAX_HEIGHT,
-  MIN_HEIGHT,
-  TerrainStroke,
-  type BrushSettings,
-  type RiverPoint,
-  type PathPoint,
-  pathLength,
-  walkingRouteIssue,
-  segmentDistance,
-} from "@openlandcraft/landscape";
+import { useStairAttachment } from './StairAttachment';
+import { OutlineEditor } from './OutlineEditor';
+import type { OutlineHandle } from '../../../packages/viewport/src/outline-edit';
+import { WallEditor } from './WallEditor';
+import { OpeningEditor } from './OpeningEditor';
+import { openingAtPoint, type OpeningSettings, type WallHit, type Level } from '@openlandcraft/core';
+import { OpeningTools, type OpeningDimensions } from './OpeningTools';
+import { connectCurvedWall, snapCurveDrawingPoint, createCurvedWall, createWallChain, snapWallPoint, type PlanPoint, type Wall, type WallShape } from '@openlandcraft/core';
+import { applyCommand, duplicateAbove, floorHeight, isBuildingPart, ownerLevel, selectionDelete, copySelection, pasteSelection, type EditorClipboard } from '@openlandcraft/core';
+import { FloorTools, ArchitectureGroupInspector } from './FloorTools';
+import { useCallback, useEffect, useRef, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, ArrowUp, ArrowDown, DoorOpen, PanelsTopLeft, Check, Copy, Equal, Focus, Grid2X2, Layers, Leaf, Mountain, MousePointer2, Plus, Redo2, RotateCcw, Route, Droplets, Save, Settings2, Sparkles, Trash2, Undo2, Waves, X } from "lucide-react";
+import { Editor, createProject, createBuilding, createRiver, createDrawnPath, createCharacterRoute, characterWalkingPath, createLake, createMoat, createBridge, createRegion, isRegion, snapPathPoint, createOcean, encodeGlb, evaluateProject, layerDisplayProject, groundHeight, parseProject, snap, MAX_GLB_BYTES, type Asset, type Instance, type Block, type Entity, type Ocean, type Path } from "@openlandcraft/core";
+import { deserializeProject, loadLocal, saveLocal, serializeProject, MAX_PROJECT_BYTES } from "@openlandcraft/project";
+import { Viewport, underwaterCamera, inlandWaterCamera, validateModels, type TransformMode, type ViewportMetrics } from "@openlandcraft/viewport";
+import { DEFAULT_BRUSH, MAX_HEIGHT, MIN_HEIGHT, TerrainStroke, type BrushSettings, type RiverPoint, type PathPoint, pathLength, walkingRouteIssue, segmentDistance } from "@openlandcraft/landscape";
 import { WaterSystem, type InlandWaterType } from "./WaterSystem";
-import {RegionTools,RegionInspector,type RegionTool} from "./RegionInspector";
+import { RegionTools, RegionInspector, type RegionTool } from "./RegionInspector";
 import { LakeInspector } from "./LakeInspector";
 import { PathInspector } from "./PathInspector";
 import { RiverInspector } from "./RiverInspector";
@@ -170,8 +83,8 @@ function IconButton({
   );
 }
 
-import {RouteCornerEditor} from './RouteCornerEditor';
-import {RouteCornerFields} from './RouteCornerFields';
+import { RouteCornerEditor } from './RouteCornerEditor';
+import { RouteCornerFields } from './RouteCornerFields';
 import { ConstructionInspector } from "./ConstructionInspector";
 
 export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
@@ -207,7 +120,10 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     try{const plan=duplicateAbove(state.project,copyDraft.sourceId,copyDraft.height,copyDraft.prefix);applyCommand(state.project,{type:'duplicateAbove',...copyDraft});return {plan,error:''};}
     catch(error){return {plan:null,error:error instanceof Error?error.message:'The copy cannot be placed.'};}
   },[copyDraft,state.project,state.selectedId,state.gestureLabel]);
-  useEffect(()=>{setCopySpacing(null);setCopyDraft(d=>d?.sourceId===state.selectedId?d:null);setSelectedParts(ids=>ids.filter(id=>(id==='terrain'||state.project.entities.some(e=>e.id===id))&&canEditObject(state.project,id,state.isolatedLayerId)));},[state.selectedId,state.revision,state.isolatedLayerId]);
+  useEffect(()=>{setCopySpacing(null);setCopyDraft(d=>d?.sourceId===state.selectedId?d:null);setSelectedParts(ids=>{
+    const valid=ids.filter(id=>(id==='terrain'||state.project.entities.some(e=>e.id===id))&&canEditObject(state.project,id,state.isolatedLayerId));
+    return valid.length===ids.length?ids:valid;
+  });},[state.selectedId,state.revision,state.isolatedLayerId]);
   const hasWater = project.entities.some(
     (entity) =>
       entity.visible && (entity.kind === "ocean" || entity.kind === "river" || entity.kind === "lake"),
@@ -225,6 +141,12 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const activeProjection=view==='shore'||view.endsWith('underwater')?'perspective':projection;
   const [frameToken, setFrameToken] = useState(0);
   const [frameCancelToken, setFrameCancelToken] = useState(0);
+  const [cameraResetToken, setCameraResetToken] = useState(0);
+  const resetCamera = () => {
+    setProjection(activeProjection);
+    setView(activeProjection === 'orthographic' ? 'axonometric' : 'perspective');
+    setCameraResetToken(value => value + 1);
+  };
   const [openingDimensions,setOpeningDimensions]=useState<Record<'door'|'window',OpeningDimensions>>({door:{width:'0.9',height:'2.1',sill:'0',shape:'rectangle',archRise:'.45',joinery:joineryDraft('door')},window:{width:'1.4',height:'1.2',sill:'0.9',shape:'rectangle',archRise:'.6',joinery:joineryDraft('window')}});
   const [openingFocus,setOpeningFocus]=useState<{wallId:string;openingId:string}|null>(null);
   const [openingStatus,setOpeningStatus]=useState('Point at a wall to preview an opening.');
@@ -460,6 +382,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const finishOutlineEdit=()=>{editor.cancel();setTool('select');};
   const wallTarget=selected?.kind==='wall'&&selected.visible?selected:undefined;
   const [wallStatus,setWallStatus]=useState('Drag the wall body or its Start / End handles.');
+  useEffect(()=>{setWallStatus('');setOutlineStatus('');},[state.selectedId]);
   const pickWall=(id:string,doubleClick:boolean)=>{select(id);if(doubleClick){setTool('wall-edit');setWallStatus(project.entities.some(e=>e.id===id&&e.kind==='wall'&&e.curve)?'Drag Center to move or Radius to resize. Use Properties for precise dimensions.':'Drag the wall body or its Start / End handles.');}};
   const finishWallEdit=()=>{editor.cancel();setTool('select');};
   const focusOpening=(focus:{wallId:string;openingId:string})=>{
@@ -665,7 +588,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
         "Building added. Select its level or individual walls, slab, and roof to edit.",
       );
     });
-  const groundPoint = (x: number, z: number) => {
+  const groundPoint = (x: number, z: number, wallPoint?: PlanPoint) => {
     if(tool==='tower'){tower.point(x,z);return;}
     if(tool==='repeat'){repeat.point(x,z);return;}
     if (tool === 'plant') { plants.place(x, z); return; }
@@ -692,8 +615,8 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
         });return;
       }
       const walls=project.entities.filter((e):e is Wall=>e.kind==='wall'&&e.parentId===drawingLevel.id&&e.joins===true);
-      const next=snapping?snapWallPoint(point,walls,wallDraft.at(-1)):point;
-      if(wallDraft.length>=3&&Math.hypot(next[0]-wallDraft[0][0],next[1]-wallDraft[0][1])<0.2){finishArchitecture(true);return;}
+      const next=tool==='wall'&&wallPoint?wallPoint:snapping?snapWallPoint(point,walls,wallDraft.at(-1)):point;
+      if(wallDraft.length>=3&&Math.hypot(next[0]-wallDraft[0][0],next[1]-wallDraft[0][1])<(wallPoint?1e-8:0.2)){finishArchitecture(true);return;}
       guard(()=>{
         if(wallDraft.length>=16)throw new Error('Finish this drawing with up to 16 corners.');
         if(wallDraft.length&&Math.hypot(next[0]-wallDraft.at(-1)![0],next[1]-wallDraft.at(-1)![1])<0.2)throw new Error('Choose a different corner or finish the chain.');
@@ -1219,7 +1142,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
         />
 
         <main className="stage" aria-label="3D editor">
-          <ViewportToolbar view={view} projection={activeProjection} onProjection={next=>{setProjection(next);setView(next==='orthographic'?'axonometric':'perspective');}}
+          <ViewportToolbar view={view} projection={activeProjection} onResetCamera={resetCamera} onProjection={next=>{setProjection(next);setView(next==='orthographic'?'axonometric':'perspective');}}
             canShore={project.entities.some(entity => entity.kind === 'ocean' && entity.visible)} canDive={canDive}
             onView={next => { if(next === 'shore' || next.endsWith('underwater')) chooseTool('select'); if(next==='perspective'||next==='axonometric')setProjection(next==='axonometric'?'orthographic':'perspective');setView(next); }}
             transform={tool === 'select' && selected?.visible && ['instance','level','block'].includes(selected.kind) ? transformMode : undefined}
@@ -1240,6 +1163,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               outlineEditing={!stairAttachment.draft&&editingOutline&&outlineTarget&&selectedLevel?{part:outlineTarget,level:selectedLevel,handle:outlineHandle,onHandle:setOutlineHandle,onStatus:setOutlineStatus}:undefined}
               onWallPick={pickWall}
               wallEditing={editingWall&&wallTarget&&selectedLevel?{wall:wallTarget,level:selectedLevel,onStatus:setWallStatus}:undefined}
+              wallHeightHandle={(tool==='select'||editingWall)&&wallTarget&&selectedLevel&&!focusedOpening&&!selectedParts.length&&!stairAttachment.draft?{wall:wallTarget,level:selectedLevel,onStatus:setWallStatus}:undefined}
               openingSelection={tool==='select'||editingWall?{focus:focusedOpening?openingFocus:null,onPick:pickOpening}:undefined}
               openingEditing={editingOpening&&placementLevel?{level:placementLevel,focus:focusedOpening?openingFocus:null,onSelect:focusOpening,onStatus:setOpeningStatus}:undefined}
               openingPlacement={placingOpening&&placementLevel?{level:placementLevel,settings:openingSettings,onStatus:setOpeningStatus,onPlace:placeOpening}:undefined}
@@ -1257,6 +1181,8 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               projection={activeProjection}
               onNavigationView={setView}
               frameToken={frameToken}
+              cameraResetToken={cameraResetToken}
+              onResetCamera={resetCamera}
               frameCancelToken={frameCancelToken}
               onMetrics={reportMetrics}
               editor={editor}
@@ -1393,16 +1319,10 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
           mobileActive={panel === "inspector"}
           editing={!!state.gestureLabel}
           selectionKey={focusedOpening?.id ?? state.selectedId ?? ''}
-          scope={tool === 'path' ? 'draw-path' : drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'edit-wall' : editingOutline ? 'edit-outline' : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
+          scope={tool === 'path' ? 'draw-path' : drawingArchitecture ? 'draw-architecture' : placingOpening ? 'place-opening' : editingOpening ? 'edit-opening' : editingWall ? 'wall' : editingOutline ? outlineTarget?.kind ?? 'outline'  : state.selectedId === 'terrain' ? 'terrain' : selected?.kind ?? 'empty'}
         >
-          {['select','wall-edit','outline-edit','opening-edit'].includes(tool)&&state.selectedId&&<TowerSelection key={`tower-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
-          {tool==='select'&&!mirrorDraft&&state.selectedId&&<MirrorSelection editor={editor} id={state.selectedId} onEdit={r=>{editor.cancel();setMirrorDraft(r);setPanel('inspector');}} onSelect={select} onError={setError}/>}
-          {tool==='select'&&!mirrorDraft&&state.selectedId&&<RepeatSelection key={`repeat-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
-          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
-          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!focusedOpening&&!stairAttachment.draft&&['select','wall-edit','outline-edit'].includes(tool)&&<ArchitecturalMaterialFields key={'material-'+(selectedParts.length?selectedParts:[state.selectedId]).join('|')} project={project} editor={editor} ids={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]}/>}
-          {(mirrorDraft?<MirrorPanel key={mirrorDraft.ruleId??'new-mirror'} editor={editor} request={mirrorDraft} onGuide={setMirrorGuide} onClose={()=>{setMirrorDraft(null);setMirrorGuide(null);}} onSelect={select}/>:stairAttachment.panel)??(tool === 'hedge' ? hedge.panel : tool === 'tower' ? tower.panel : tool === 'repeat' ? repeat.panel : tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools stairShape={stairShape} onStairShape={shape=>{setStairShape(shape);setWallDraft([]);if(shape==='spiral'&&stairTower)setStairDimensions(old=>({...old,...spiralTowerDimensions(stairTower)}));}} stairTowerId={stairTower?.id??'draw'} onStairTower={chooseStairTower} onFitStairTower={fitSpiralStairs} stairDimensions={stairDimensions} onStairDimensions={setStairDimensions} roofShape={roofShape} roofHeight={roofHeight} roofOverhang={roofOverhang} roofTowerId={roofTower?.id??'draw'} roofTowers={roofTowers} onRoofShape={shape=>{setRoofShape(shape);setWallDraft([]);}} onRoofHeight={setRoofHeight} onRoofOverhang={setRoofOverhang} onRoofTower={setRoofTowerId} onFitTower={fitConicalRoof} wallShape={wallShape} wallHeight={wallHeight} clockwise={wallClockwise} onWallShape={shape=>{setWallShape(shape);setWallDraft([]);setSurfaceOffset(shape==='straight'?0:0.2);}} onWallHeight={setWallHeight} onClockwise={setWallClockwise} kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor onAttachStair={end=>{setTool('outline-edit');setPanel('inspector');stairAttachment.start(outlineTarget.id,end);}} key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : editingOpening ? <OpeningEditor onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : tool==='select'&&focusedOpening&&openingHost ? <OpeningSelectionSummary wall={openingHost} opening={focusedOpening} level={selectedLevel} onFrame={frame}/> : placingOpening ? <OpeningTools project={project} kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
-            <PanelBody className="terrain-inspector">
-              <PanelHeading title={<>Site terrain</>} icon={<><Mountain size={24} /></>} subtitle={<>Editable heightfield</>} />
+          {(mirrorDraft?<MirrorPanel key={mirrorDraft.ruleId??'new-mirror'} editor={editor} request={mirrorDraft} onGuide={setMirrorGuide} onClose={()=>{setMirrorDraft(null);setMirrorGuide(null);}} onSelect={select}/>:stairAttachment.panel)??(tool === 'hedge' ? hedge.panel : tool === 'tower' ? tower.panel : tool === 'repeat' ? repeat.panel : tool === 'path' ? <PathDrawingPanel cornerRounding={pathDraftRounding} characterName={project.entities.find(entity=>entity.id===pathReturnId)?.name} points={pathDraft} width={pathDrawWidth} surface={pathDrawSurface} redrawing={!!pathRedrawId} error={pathDrawingError} snapping={snapping} onWidth={setPathDrawWidth} onSurface={setPathDrawSurface} onSnapping={setSnapping} onFinish={finishPathDrawing} onBack={()=>{setPathDraft(points=>points.slice(0,-1));setPathDraftRounding(values=>values.slice(0,-1).map((value,i,array)=>i===array.length-1?0:value));setPathCornerIndex(null);}} onCancel={cancelPathDrawing}/> : drawingArchitecture ? <ArchitectureTools stairShape={stairShape} onStairShape={shape=>{setStairShape(shape);setWallDraft([]);if(shape==='spiral'&&stairTower)setStairDimensions(old=>({...old,...spiralTowerDimensions(stairTower)}));}} stairTowerId={stairTower?.id??'draw'} onStairTower={chooseStairTower} onFitStairTower={fitSpiralStairs} stairDimensions={stairDimensions} onStairDimensions={setStairDimensions} roofShape={roofShape} roofHeight={roofHeight} roofOverhang={roofOverhang} roofTowerId={roofTower?.id??'draw'} roofTowers={roofTowers} onRoofShape={shape=>{setRoofShape(shape);setWallDraft([]);}} onRoofHeight={setRoofHeight} onRoofOverhang={setRoofOverhang} onRoofTower={setRoofTowerId} onFitTower={fitConicalRoof} wallShape={wallShape} wallHeight={wallHeight} clockwise={wallClockwise} onWallShape={shape=>{setWallShape(shape);setWallDraft([]);setSurfaceOffset(shape==='straight'?0:0.2);}} onWallHeight={setWallHeight} onClockwise={setWallClockwise} kind={tool} levels={placementFloors} level={drawingLevel} count={wallDraft.length} offset={surfaceOffset} thickness={surfaceThickness} snapping={snapping} onLevel={chooseDrawingLevel} onNewLevel={addDrawingLevel} onOffset={setSurfaceOffset} onThickness={setSurfaceThickness} onSnapping={setSnapping} onFinish={finishArchitecture} onBack={()=>setWallDraft(points=>points.slice(0,-1))} onCancel={()=>setWallDraft([])} onExit={()=>chooseTool('select')}/> : outlineTarget&&(tool==='select'||editingOutline)&&!selectedParts.length ? <OutlineEditor onEdit={()=>{setTool('outline-edit');setOutlineStatus('');}} onAttachStair={end=>{setTool('outline-edit');setPanel('inspector');stairAttachment.start(outlineTarget.id,end);}} key={outlineTarget.id} part={outlineTarget} level={selectedLevel} editing={editingOutline} editor={editor} handle={outlineHandle} onHandle={setOutlineHandle} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishOutlineEdit} onSelect={select} status={outlineStatus} onStatus={setOutlineStatus}/> : wallTarget&&!focusedOpening&&(tool==='select'||editingWall)&&!selectedParts.length ? <WallEditor key={wallTarget.id} onEdit={()=>{setTool('wall-edit');setWallStatus('Drag the wall body or its handles.');}} wall={wallTarget} level={selectedLevel} editing={editingWall} editor={editor} snapping={snapping} onSnapping={setSnapping} onFrame={frame} onFinish={finishWallEdit} onSelect={select} status={wallStatus} onStatus={setWallStatus}/> : (editingOpening||tool==='select'&&focusedOpening&&openingHost) ? <OpeningEditor key={focusedOpening?.id??'opening-selection'} editing={editingOpening} onEdit={()=>{setTool('opening-edit');setOpeningStatus('');}} onFrame={frame} wall={focusedOpening?openingHost:undefined} opening={focusedOpening} editor={editor} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.cancel();editor.select(id);setOpeningFocus(null);setOpeningStatus('Click a tinted opening on this floor.');frame();}} onSelect={(wallId,openingId)=>focusOpening({wallId,openingId})} snapping={snapping} onSnapping={setSnapping} onFinish={finishOpeningEdit} status={openingStatus} onStatus={setOpeningStatus}/> : placingOpening ? <OpeningTools project={project} kind={openingSettings.kind} dimensions={dimensions} onDimensions={value=>setOpeningDimensions(old=>({...old,[openingSettings.kind]:value}))} snapping={snapping} onSnapping={setSnapping} levels={placementFloors} levelId={placementLevel?.id} onLevel={id=>{editor.select(id);setOpeningStatus('Point at a wall to place a '+openingSettings.kind+'.');frame();}} onKind={chooseTool} onFinish={()=>chooseTool('select')} status={openingStatus}/> : state.selectedId === "terrain" ? (
+            <PropertiesPanel title="Terrain" className="terrain-inspector">
               <InspectorSection sectionId="app-sculpt" title={<>Sculpt</>}>
                 <div className="brush-kinds">
                   {(
@@ -1574,7 +1494,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
                 Building elevations stay fixed while terrain changes. Water
                 depth updates from the edited ground.
               </FieldMessage></InspectorSection>
-            </PanelBody>
+            </PropertiesPanel>
           ) : regionsOpen && (!selected||isRegion(selected)) ? (
             <RegionTools type={regionType} onType={openRegions} editor={editor} onSelect={select} onDraw={()=>{chooseTool("region");setView("top");}} onAdd={()=>addRegion()} drawing={tool==="region"}>
               {selected&&isRegion(selected)?<RegionInspector key={selected.id+"-"+state.revision+"-"+inspectorEpoch} region={selected} editor={editor} cancel={cancelPreview} snapping={snapping} onSnapping={setSnapping}/>:undefined}
@@ -1623,7 +1543,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               guard={guard}
             />
           ) : selected ? (
-            <PanelForm
+            <PropertiesForm title={selected.kind === "block" ? "Block" : "Ocean"}
               key={`${selected.id}-${state.revision}-${inspectorEpoch}`}
               onInputCapture={() =>
                 guard(() => {
@@ -1636,13 +1556,6 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
                 guard(() => editor.commit());
               }}
             >
-              <PanelHeading title={<>{selected.name}</>} icon={<>{selected.kind === "block" ? (
-                    <Box size={23} strokeWidth={1.4} />
-                  ) : (
-                    <Waves size={24} strokeWidth={1.4} />
-                  )}</>} subtitle={<>{selected.kind === "block"
-                      ? "Massing block"
-                      : "Directional ocean surface"}</>} />
               <InspectorSection sectionId="app-object" title={<>Object</>}>
                 <Field>
                   Name
@@ -1863,7 +1776,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
                   ? "Concept massing. Add a building for separate levels, walls, slabs, and roofs."
                   : "Coastal motion is a visual approximation. Underwater views and physical fluid simulation remain future work."}
               </FieldMessage></InspectorSection>
-            </PanelForm>
+            </PropertiesForm>
           ) : (
             <div className="empty-inspector">
               <MousePointer2 size={26} />
@@ -1874,6 +1787,11 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
               </p>
             </div>
           ))}
+          {['select','wall-edit','outline-edit','opening-edit'].includes(tool)&&state.selectedId&&<TowerSelection key={`tower-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
+          {tool==='select'&&!mirrorDraft&&state.selectedId&&<MirrorSelection editor={editor} id={state.selectedId} onEdit={r=>{editor.cancel();setMirrorDraft(r);setPanel('inspector');}} onSelect={select} onError={setError}/>}
+          {tool==='select'&&!mirrorDraft&&state.selectedId&&<RepeatSelection key={`repeat-${state.selectedId}-${state.revision}`} editor={editor} id={state.selectedId} onSelect={select} onError={setError}/>}
+          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!editingWall&&!editingOutline&&!focusedOpening&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&selectedLevel&&<InspectorSection sectionId="floor-context" title="Floors & units" className="mx-panel" defaultOpen={false}><FloorTools key={selectedLevel.id} project={project} editor={editor} selectedId={state.selectedId} selectedIds={selectedParts} select={select} guard={guard} isolate={isolateFloor} onIsolate={value=>{setCopyDraft(null);setIsolateFloor(value);}} onClear={()=>select(selectedLevel.id)}/></InspectorSection>}
+          {!drawingArchitecture&&!placingOpening&&!editingOpening&&!focusedOpening&&!stairAttachment.draft&&((!wallTarget&&!outlineTarget)||!!selectedParts.length)&&['select','wall-edit','outline-edit'].includes(tool)&&<ArchitecturalMaterialFields key={'material-'+(selectedParts.length?selectedParts:[state.selectedId]).join('|')} project={project} editor={editor} ids={selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[]}/>}
         </InspectorPanel>
       </div>
       <nav className="mobile-panels" aria-label="Editor panels">

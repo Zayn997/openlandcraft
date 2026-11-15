@@ -1,9 +1,11 @@
 import {ArchitectureLabel} from './architecture-label';
 import { Line } from '@react-three/drei';
-import { architectureIssue, createWallChain, drawingPoint, snapWallPoint, type Project, type Level, type PlanPoint, type Wall } from '@openlandcraft/core';
+import { architectureIssue, canEditObject, createWallChain, drawingPoint, snapWallPoint, resolveWallDrawingSnap, type Project, type Level, type PlanPoint, type Wall } from '@openlandcraft/core';
 import { useEffect, useMemo, useState } from 'react';
 import { DoubleSide } from 'three';
 import { buildWallGeometry } from './architecture-geometry';
+import { useShiftKey } from './use-shift-key';
+import { WallSnapGuide } from './wall-snap-guide';
 
 function DraftWall({wall,walls,invalid}:{wall:Wall;walls:Wall[];invalid:boolean}) {
   const geometry=useMemo(()=>buildWallGeometry(wall,walls),[wall,walls]);
@@ -11,9 +13,12 @@ function DraftWall({wall,walls,invalid}:{wall:Wall;walls:Wall[];invalid:boolean}
   return <mesh geometry={geometry} raycast={()=>undefined}><meshBasicMaterial color={invalid?'#ed7770':'#e3b349'} transparent opacity={0.4} depthWrite={false} depthTest={false}/></mesh>;
 }
 
-export function ArchitectureDrawing({project,level,points,onPoint,kind,offset,thickness,snapping,walls}:{project:Project;level:Level;points:PlanPoint[];onPoint:(x:number,z:number)=>void;kind:'wall'|'floor'|'roof';offset:number;thickness:number;snapping:boolean;walls:Wall[]}) {
+export function ArchitectureDrawing({project,level,points,onPoint,kind,offset,thickness,snapping,walls}:{project:Project;level:Level;points:PlanPoint[];onPoint:(x:number,z:number,wallPoint?:PlanPoint)=>void;kind:'wall'|'floor'|'roof';offset:number;thickness:number;snapping:boolean;walls:Wall[]}) {
   const [cursor,setCursor]=useState<PlanPoint|null>(null);
-  const next=cursor?(snapping?snapWallPoint(cursor,walls,points.at(-1)):cursor):null;
+  const {shift,setShift}=useShiftKey();
+  const snapWalls=useMemo(()=>walls.filter(w=>w.visible&&canEditObject(project,w.id)),[walls,project]);
+  const feedback=cursor&&kind==='wall'?resolveWallDrawingSnap(cursor,snapWalls,points.at(-1),snapping,shift,points.slice(0,-1)):undefined;
+  const next=feedback?.point??(cursor?(snapping?snapWallPoint(cursor,walls,points.at(-1)):cursor):null);
   const last=points.at(-1);
   const extendsDraft=next&&(!last||Math.hypot(next[0]-last[0],next[1]-last[1])>=0.2);
   const path=extendsDraft?[...points,next]:points;
@@ -28,11 +33,16 @@ export function ArchitectureDrawing({project,level,points,onPoint,kind,offset,th
       return {walls:created,all,issue:architectureIssue([...project.entities,...created])??''};
     } catch(error) { return {walls:[],all:walls,issue:error instanceof Error?error.message:'Cannot join this wall.'}; }
   },[project,level.id,kind,JSON.stringify(path),thickness]);
+  const snapTarget=feedback?.endpoint??feedback?.nearEndpoint;
+  const targetWall=walls.find(w=>w.id===snapTarget?.wallId);
+  const draftWall=preview.walls.at(-1);
+  const markerTop=draftWall?draftWall.elevation+draftWall.height+0.05:height+0.12;
   return <group userData={{waterCaptureExclude:true}} position={level.position} rotation={[0,level.rotation*Math.PI/180,0]}>
-    <mesh position={[0,offset,0]} rotation={[-Math.PI/2,0,0]} onPointerMove={e=>{e.stopPropagation();setCursor(drawingPoint(level,e.point.x,e.point.z));}} onPointerOut={()=>setCursor(null)} onClick={e=>{if(e.button===0&&e.delta<=4){e.stopPropagation();onPoint(e.point.x,e.point.z);}}}>
+    <mesh position={[0,offset,0]} rotation={[-Math.PI/2,0,0]} onPointerMove={e=>{e.stopPropagation();setShift(e.shiftKey);setCursor(drawingPoint(level,e.point.x,e.point.z));}} onPointerOut={()=>setCursor(null)} onClick={e=>{if(e.button===0&&e.delta<=4){e.stopPropagation();const resolved=kind==='wall'?resolveWallDrawingSnap(drawingPoint(level,e.point.x,e.point.z),snapWalls,points.at(-1),snapping,e.shiftKey,points.slice(0,-1)).point:undefined;onPoint(e.point.x,e.point.z,resolved);}}}>
       <planeGeometry args={[200,200]}/><meshBasicMaterial transparent opacity={0} depthWrite={false} side={DoubleSide}/>
     </mesh>
     {preview.walls.map(wall=><DraftWall key={wall.id} wall={wall} walls={preview.all} invalid={!!preview.issue}/>)}
+    <WallSnapGuide feedback={preview.issue&&feedback?{...feedback,endpoint:undefined,nearEndpoint:undefined}:feedback} height={markerTop} baseHeight={draftWall?.elevation??height} targetHeight={targetWall?targetWall.elevation+targetWall.height+0.05:markerTop} targetBaseHeight={targetWall?.elevation??height}/>
     {path.length>1&&<Line points={path.map(p=>[p[0],height,p[1]])} color="#e3b349" lineWidth={3} depthTest={false} raycast={()=>undefined}/>}
     {kind!=='wall'&&path.length>2&&<Line points={[[path.at(-1)![0],height,path.at(-1)![1]],[path[0][0],height,path[0][1]]]} color="#e3b349" lineWidth={1} dashed dashSize={0.3} gapSize={0.2} depthTest={false} raycast={()=>undefined}/>}
     {next&&<mesh position={[next[0],height,next[1]]} rotation={[-Math.PI/2,0,0]} raycast={()=>undefined}><ringGeometry args={[0.08,0.14,24]}/><meshBasicMaterial color="#e3b349" depthTest={false} side={DoubleSide}/></mesh>}

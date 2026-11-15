@@ -15,7 +15,7 @@ export function WallWalkEditor({wall,editor,onStatus}:{wall:Wall;editor:Editor;o
   const candidate={...wall,walk},changed=JSON.stringify(walk)!==JSON.stringify(wall.walk);
   let issue='';if(changed&&!busy)try{applyCommand(editor.getSnapshot().project,{type:'replace',entity:candidate});}catch(error){issue=error instanceof Error?error.message:'Invalid wall walk.';}
   const labels:Record<Key,string>={width:'Walk clear width',thickness:'Deck thickness',parapetHeight:'Parapet height',parapetThickness:'Parapet thickness'};
-  return <><InspectorSection sectionId="wall-walk" title="Wall walk & parapet">
+  return <><InspectorSection sectionId="wall-walk" title="Wall walk & parapet" defaultOpen={false}>
     <form onSubmit={e=>{e.preventDefault();if(changed&&!issue&&!busy)try{editor.execute({type:'replace',entity:candidate},enabled?'Edit wall walk and parapet':'Remove wall walk and parapet');onStatus(enabled?'Wall walk and parapet applied. They follow this wall automatically.':'Wall walk removed. Full-height wall and battlements restored.');}catch(error){onStatus(error instanceof Error?error.message:'Could not edit wall walk.');}}}>
       <fieldset className="opening-edit-fields" disabled={busy}>
         <Field variant="checkbox"><CheckboxInput checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Enable wall walk & parapet</Field>

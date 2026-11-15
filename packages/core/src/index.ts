@@ -31,6 +31,7 @@ export * from './opening-edit';
 export * from './opening-profile';
 
 export * from './wall-edit';
+export * from './wall-snapping';
 
 export * from './outline-edit';
 export * from './selection-delete';

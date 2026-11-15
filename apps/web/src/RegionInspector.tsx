@@ -1,10 +1,11 @@
-import { Button, Panel, PointEditor, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, PanelBody, PanelHeading, SelectInput, SelectOption, TextInput } from './ui';
+import { PropertiesPanel } from './PropertiesPanel';
+import { Button, Panel, PointEditor, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, PanelHeading, SelectInput, SelectOption, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
-import {useState,type ReactNode} from 'react';
-import {Check,Leaf,Plus,RotateCcw,Trash2} from 'lucide-react';
-import {REGION_SURFACES,isRegion,type Editor,type Region,type PlantingRegion} from '@openlandcraft/core';
-import {polygonArea,type PathPoint} from '@openlandcraft/landscape';
-import {SurfaceElevationFields} from './SurfaceElevationFields';
+import { useState, type ReactNode } from 'react';
+import { Check, Leaf, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { REGION_SURFACES, isRegion, type Editor, type Region } from '@openlandcraft/core';
+import { polygonArea, type PathPoint } from '@openlandcraft/landscape';
+import { SurfaceElevationFields } from './SurfaceElevationFields';
 
 export type RegionTool='material'|'planting'|'courtyard';
 const REGION_TOOLS:RegionTool[]=['material','courtyard','planting'];
@@ -35,7 +36,7 @@ export function RegionInspector({region,editor,cancel,snapping,onSnapping}:{regi
   };
   const preview=()=>{if(draft.kind!=='plantingRegion')return;editor.cancel();try{editor.begin('Regenerate planting');editor.preview({type:'planting',region:draft});setPreviewed(true);setPending(true);setError('');}catch(e){editor.cancel();setPreviewed(false);setError(e instanceof Error?e.message:'Planting preview failed.');}};
   const plantNumber=(key:'seed'|'density'|'scaleMin'|'scaleMax'|'spacing'|'clearance',label:string,min:number,max:number,unit='')=>draft.kind==='plantingRegion'&&<NumberField label={label} value={draft[key]} min={min} max={max} unit={unit} onChange={value=>change({...draft,[key]:value})}/>;
-  return <PanelBody className="region-inspector"><PanelHeading title={<>{region.name}</>} subtitle={<>{area.toFixed(1)} m² · {plant?`${count} generated plants`:draft.kind==='materialRegion'&&draft.elevationMode&&draft.elevationMode!=='terrain'?draft.elevationMode==='graded'?'Grades terrain':'Fixed elevation':'Follows terrain'}</>} />
+  return <PropertiesPanel className="region-inspector" title={plant?'Planting region':'Surface region'} description={`${area.toFixed(1)} m²${plant?` · ${count} plants`:''}`}>
     {!plant&&<Field variant="checkbox"><CheckboxInput aria-label="Snap region points" checked={snapping} onChange={e=>onSnapping(e.target.checked)}/>Snap boundary points to 0.5 m</Field>}
     <form onSubmit={e=>{e.preventDefault();if(previewed&&!error)editor.commit();}}>
       <InspectorSection sectionId="regioninspector-region-settings" title={<>{plant?'Planting settings':'Surface material'}</>}><Field>Name<TextInput aria-label="Region name" value={draft.name} required maxLength={80} onChange={e=>change({...draft,name:e.target.value})}/></Field>
@@ -63,6 +64,6 @@ export function RegionInspector({region,editor,cancel,snapping,onSnapping}:{regi
       <ActionRow><Button variant="destructive" size="sm" type="button" className="delete-button" disabled={pending||!!state.gestureLabel} onClick={()=>editor.execute({type:'remove',id:region.id},'Delete region')}><Trash2 size={14}/>Delete region</Button></ActionRow>
     </form>
     <InspectorSection sectionId="regioninspector-notes-1" title="About this object" defaultOpen={false}><FieldMessage>{plant?'Editing an individual generated plant detaches it, including placement, name and visibility changes. Regeneration preserves detached plants and replaces only the remaining owned plants. Deleting a region removes its owned plants; Undo restores them. Deleted owned plants may return on regeneration. After changing water, buildings or paths, preview regeneration to refresh exclusions.':'A stored region covers the evaluated terrain. Removing it reveals the underlying surface and preserves sculpting.'}</FieldMessage></InspectorSection>
-  </PanelBody>;
+  </PropertiesPanel>;
 }
 

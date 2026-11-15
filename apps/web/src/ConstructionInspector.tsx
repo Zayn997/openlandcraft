@@ -1,20 +1,5 @@
-import {
-  Button,
-  ActionBar,
-  ActionRow,
-  CheckboxInput,
-  ColorInput,
-  Field,
-  FieldGrid,
-  FieldMessage,
-  NumberField,
-  PanelBody,
-  PanelHeading,
-  Row,
-  SelectInput,
-  SelectOption,
-  TextInput,
-} from "./ui";
+import { PropertiesPanel } from './PropertiesPanel';
+import { Button, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, Row, SelectInput, SelectOption, TextInput } from "./ui";
 import { InspectorSection } from "./InspectorSection";
 import { CharacterAnimationSection } from "./CharacterAnimationSection";
 import { CharacterRouteSection } from "./CharacterRouteSection";
@@ -22,23 +7,8 @@ import { ROUND_ROUTE_GESTURE } from "@openlandcraft/core";
 import { OpeningFields, OutlineFields } from "./ArchitectureFields";
 import { wallLength, floorHeight } from "@openlandcraft/core";
 import { useMemo, useState } from "react";
-import { Box, Check, Copy, Layers, RotateCcw, Trash2 } from "lucide-react";
-import {
-  instancePosition,
-  isBirdAsset,
-  isFishAsset,
-  isGroundCharacterAsset,
-  groundRoutes,
-  groundCharacterKind,
-  fishSchools,
-  evaluateProject,
-  layerDisplayProject,
-  scatterInstances,
-  type Entity,
-  type Editor,
-  type Project,
-  type Instance,
-} from "@openlandcraft/core";
+import { Check, Copy, RotateCcw, Trash2 } from "lucide-react";
+import { instancePosition, isBirdAsset, isFishAsset, isGroundCharacterAsset, groundRoutes, groundCharacterKind, fishSchools, evaluateProject, layerDisplayProject, scatterInstances, type Entity, type Editor, type Project, type Instance } from "@openlandcraft/core";
 
 type Construction = Exclude<
   Entity,
@@ -153,7 +123,7 @@ export function ConstructionInspector({
     return fishSchools(displayed).get(selected.id);
   }, [fish, selected, project, state.isolatedLayerId]);
   return (
-    <PanelBody className="construction-inspector">
+    <PropertiesPanel title={selected.kind === "instance" ? fish ? "Fish" : bird ? "Bird" : character ? "Character" : "Model" : selected.kind === "level" ? "Building level" : selected.kind} className="construction-inspector">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -161,35 +131,6 @@ export function ConstructionInspector({
         }}
       >
         <fieldset className="architecture-properties">
-          <PanelHeading
-            title={<>{selected.name}</>}
-            icon={
-              <>
-                {selected.kind === "instance" ? (
-                  <Box size={23} />
-                ) : (
-                  <Layers size={23} />
-                )}
-              </>
-            }
-            subtitle={
-              <>
-                {selected.kind === "instance"
-                  ? fish
-                    ? "Swimming fish"
-                    : bird
-                      ? "Flying bird"
-                      : character
-                        ? groundCharacterKind(asset!) === "horse"
-                          ? "Animated horse"
-                          : "Animated person"
-                        : "Placed model"
-                  : selected.kind === "level"
-                    ? "Fixed building level"
-                    : `Parametric ${selected.kind}`}
-              </>
-            }
-          />
           <InspectorSection
             sectionId="constructioninspector-object"
             title={<>Object</>}
@@ -742,6 +683,6 @@ export function ConstructionInspector({
           </FieldMessage>
         </InspectorSection>
       )}
-    </PanelBody>
+    </PropertiesPanel>
   );
 }

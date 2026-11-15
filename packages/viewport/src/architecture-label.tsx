@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {worldUnitsPerPixel} from './camera-projection';
 
 /** Screen-sized dimensions without a second React DOM root inside the canvas. */
-export function ArchitectureLabel({position,text}:{position:[number,number,number];text:string}) {
+export function ArchitectureLabel({position,text,screenOffset=[0,0]}:{position:[number,number,number];text:string;screenOffset?:[number,number]}) {
   const sprite=useRef<THREE.Sprite>(null),world=useMemo(()=>new THREE.Vector3(),[]);
   const label=useMemo(()=>{
     const canvas=document.createElement('canvas'),context=canvas.getContext('2d')!;
@@ -23,7 +23,7 @@ export function ArchitectureLabel({position,text}:{position:[number,number,numbe
     const unit=worldUnitsPerPixel(camera,world,size.height);
     sprite.current.scale.set(unit*label.width,unit*label.height,1);
   });
-  return <sprite ref={sprite} position={position} renderOrder={16} raycast={()=>undefined} userData={{waterCaptureExclude:true}}>
+  return <sprite ref={sprite} position={position} center={[0.5-screenOffset[0]/label.width,0.5-screenOffset[1]/label.height]} renderOrder={16} raycast={()=>undefined} userData={{waterCaptureExclude:true}}>
     <spriteMaterial map={label.texture} transparent depthTest={false} depthWrite={false} toneMapped={false}/>
   </sprite>;
 }

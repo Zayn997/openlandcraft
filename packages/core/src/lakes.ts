@@ -35,6 +35,8 @@ export function createLake(project:Project,points?:PathPoint[]):Lake {
 /** A normal editable lake with a retained island, never a terrain-filled disk. */
 export function createMoat(project:Project):Lake{
   const size=Math.min(project.site.width,project.site.depth),loop=(radius:number)=>Array.from({length:16},(_,i):PathPoint=>[Math.cos(i*Math.PI/8)*radius,Math.sin(i*Math.PI/8)*radius]);
-  const lake={...createLake(project,loop(size*.38)),name:'Castle ring moat',holes:[loop(size*.26)]};
+  // Keep the outer shoreline below the lake's 10,000 m² limit on large sites.
+  const outerRadius=Math.min(size*.38,56),innerRadius=Math.min(size*.26,outerRadius*.75);
+  const lake={...createLake(project,loop(outerRadius)),name:'Castle ring moat',holes:[loop(innerRadius)]};
   parseProject({...project,entities:[...project.entities,lake]});return lake;
 }

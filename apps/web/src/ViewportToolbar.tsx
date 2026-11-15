@@ -3,9 +3,10 @@ import { Button, CheckboxInput, Field, Row, SelectInput, SelectOption } from './
 
 export type { CameraView } from '@openlandcraft/viewport';
 
-export function ViewportToolbar({ view, projection, onProjection, canShore, canDive, onView, transform, canScale, onTransform, snapping, onSnapping }: {
+export function ViewportToolbar({ view, projection, onProjection, canShore, canDive, onView, onResetCamera, transform, canScale, onTransform, snapping, onSnapping }: {
   view: CameraView; canShore: boolean; canDive: boolean; onView: (view: CameraView) => void;
   projection:CameraProjection;onProjection:(projection:CameraProjection)=>void;
+  onResetCamera:()=>void;
   transform?: TransformMode; canScale: boolean; onTransform: (mode: TransformMode) => void;
   snapping: boolean; onSnapping: (value: boolean) => void;
 }) {
@@ -14,7 +15,8 @@ export function ViewportToolbar({ view, projection, onProjection, canShore, canD
       <Button variant="toolbar" size="sm" aria-label="3D perspective" title="3D perspective" aria-pressed={projection==='perspective'} onClick={()=>onProjection('perspective')}>3D</Button>
       <Button variant="toolbar" size="sm" aria-label="Axonometric view" title="Axo · Parallel projection" aria-pressed={projection==='orthographic'} onClick={()=>onProjection('orthographic')}>Axo</Button>
     </Row>
-    <SelectInput appearance="toolbar" aria-label="Camera view" placeholder="Views" value={view==='perspective'||view==='axonometric'?'':view} onValueChange={value => onView(value as CameraView)} className="max-w-40 shrink-0">
+    <SelectInput appearance="toolbar" aria-label="Camera view" placeholder="Views" value={view==='perspective'||view==='axonometric'?'':view} onValueChange={value => value==='reset'?onResetCamera():onView(value as CameraView)} className="max-w-40 shrink-0">
+      <SelectOption value="reset">Reset camera · fit site</SelectOption>
       <SelectOption value="top">Top</SelectOption>
       <SelectOption value="front">Front</SelectOption>
       <SelectOption value="back">Back</SelectOption>

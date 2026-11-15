@@ -10,6 +10,17 @@ const scene=(pattern=rule())=>applyCommand(base(),{type:'repeat',pattern});
 const block=(p:Project,id='row:0')=>p.entities.find(e=>e.id===id) as Block;
 
 describe('editable repeat rules',()=>{
+ it('reopens arc repeats with cross-runtime floating point noise while rejecting real edits',()=>{
+  const p=scene(rule({path:{kind:'arc',center:[0,-10],radius:20,startAngle:195,sweepAngle:150},orientation:'tangent'}));
+  const saved=JSON.parse(serializeProject(p));
+  const member=saved.entities.find((e:Block)=>e.id==='row:2');
+  member.position[0]+=2e-12;member.rotation+=2e-12;
+  expect(()=>deserializeProject(JSON.stringify(saved))).not.toThrow();
+  member.position[0]+=.001;
+  expect(()=>parseProject(saved)).toThrow('Repeat members must match');
+  member.position[0]-=.001;member.name='Unsaved edit';
+  expect(()=>parseProject(saved)).toThrow('Repeat members must match');
+ });
  it('places bounded copies on a line without moving the source; supports exact spacing, clearance and source-relative rotation',()=>{
   const p=scene();expect(p.entities).toHaveLength(6);expect(block(p,'column')).toEqual(source);expect(block(p).position).toEqual([-10,2,0]);expect(block(p,'row:4').position).toEqual([10,2,0]);
   const pattern=rule({mode:'spacing',spacing:3,clearance:2,orientation:'tangent',rotation:90});const next=applyCommand(p,{type:'repeat',pattern});expect(repeatLayout(pattern)).toMatchObject({count:6,spacing:3,start:2.5});expect(block(next).position).toEqual([-7.5,2,0]);expect(block(next).rotation).toBe(90);expect(next.entities.filter(e=>e.id.startsWith('row:'))).toHaveLength(6);

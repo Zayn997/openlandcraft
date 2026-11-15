@@ -1,10 +1,11 @@
-import { Button, PointEditor, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, PanelBody, PanelHeading, Row, TextInput } from './ui';
+import { PropertiesPanel } from './PropertiesPanel';
+import { Button, PointEditor, ActionBar, ActionRow, CheckboxInput, ColorInput, Field, FieldGrid, FieldMessage, NumberField, Row, TextInput } from './ui';
 import { InspectorSection } from './InspectorSection';
-import {useEffect,useState} from 'react';
-import {Check,Plus,RotateCcw,Trash2} from 'lucide-react';
-import type {Editor,Lake} from '@openlandcraft/core';
-import {polygonArea,type PathPoint} from '@openlandcraft/landscape';
-import {WaterMaterialFields} from './MaterialFields';
+import { useEffect, useState } from 'react';
+import { Check, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import type { Editor, Lake } from '@openlandcraft/core';
+import { polygonArea, type PathPoint } from '@openlandcraft/landscape';
+import { WaterMaterialFields } from './MaterialFields';
 
 export function LakeInspector({lake,editor,cancel,playing,onReset,onStep,snapping,onSnapping,onAddBridge}:{onAddBridge:(id:string)=>void;lake:Lake;editor:Editor;cancel:()=>void;playing:boolean;onReset:()=>void;onStep:()=>void;snapping:boolean;onSnapping:(value:boolean)=>void}){
   const [draft,setDraft]=useState(lake),[error,setError]=useState('');useEffect(()=>setDraft(lake),[lake]);
@@ -12,9 +13,10 @@ export function LakeInspector({lake,editor,cancel,playing,onReset,onStep,snappin
   const begin=()=>{if(!editor.getSnapshot().gestureLabel)editor.begin('Edit lake');};
   const change=(next:Lake)=>{setDraft(next);begin();try{editor.preview({type:'replace',entity:next});setError('');}catch(error){setError(error instanceof Error?error.message:'Invalid lake.');}};
   const number=(key:'level'|'depth'|'bank'|'amplitude'|'wavelength'|'direction'|'speed'|'foam'|'foamPersistence'|'wetBank'|'dryingTime',label:string,min:number,max:number,unit='m')=><NumberField label={label} value={draft[key]} min={min} max={max} unit={unit} onChange={value=>change({...draft,[key]:value})}/>;
-  return <PanelBody className="lake-inspector"><PanelHeading title={<>{lake.name}</>} subtitle={<>Lake · {(polygonArea(draft.points)-(draft.holes??[]).reduce((sum,hole)=>sum+polygonArea(hole),0)).toFixed(1)} m²</>} />
+  return <PropertiesPanel className="lake-inspector" title="Lake" description={`${(polygonArea(draft.points)-(draft.holes??[]).reduce((sum,hole)=>sum+polygonArea(hole),0)).toFixed(1)} m²`} actions={<>
     <Button variant="outline" disabled={!!state.gestureLabel} onClick={()=>onAddBridge(lake.id)}>Add bank-to-bank bridge</Button>
     <Field variant="checkbox"><CheckboxInput aria-label="Snap lake points" checked={snapping} onChange={e=>onSnapping(e.target.checked)}/>Snap boundary points to 0.5 m grid</Field>
+  </>}>
     <form onInputCapture={begin} onSubmit={e=>{e.preventDefault();if(!error)editor.commit();}}>
       <InspectorSection sectionId="lakeinspector-basin" title={<>Basin</>}><Field>Name<TextInput aria-label="Lake name" required maxLength={80} value={draft.name} onChange={e=>change({...draft,name:e.target.value})}/></Field><FieldGrid columns={2}>{number('level','Lake water level',-8,30)}{number('depth','Lake depth',0.2,5)}{number('bank','Lake bank blend',minBank,8)}</FieldGrid><FieldMessage>A level surface with a carved basin. Water stays within this shoreline and its bank blend; it does not flood across the site.</FieldMessage></InspectorSection>
       <InspectorSection sectionId="lakeinspector-surface-motion" title={<>Surface motion</>} className="water-details" defaultOpen={false}><FieldGrid columns={2}>{number('amplitude','Lake wave amplitude',0,0.3)}{number('wavelength','Lake wavelength',1.5,12)}{number('direction','Lake wind direction',0,360,'°')}{number('speed','Lake animation speed',0,3,'×')}</FieldGrid><FieldMessage>Small wind waves respond to depth. Direction is measured toward +X at 0° and +Z at 90°.</FieldMessage><Row className="coast-preview"><button type="button" disabled={!!state.gestureLabel} onClick={onReset}>Reset lake preview</button><button type="button" disabled={!!state.gestureLabel||playing||lake.speed===0} onClick={onStep}>Step lake 0.5 s</button></Row></InspectorSection>
@@ -24,7 +26,7 @@ export function LakeInspector({lake,editor,cancel,playing,onReset,onStep,snappin
       <InspectorSection sectionId="lakeinspector-boundary" title={<>Boundary points<span>{draft.points.length} / 24</span></>} defaultOpen={false}><FieldMessage>Drag numbered handles or edit X/Z. The final point connects to the first. Crossings and river-bank overlap are rejected.</FieldMessage>
         {draft.points.map((p,i)=><PointEditor key={i} title={<>Point {i+1}</>} actions={<><Button variant="ghost" size="icon-sm" type="button" aria-label={`Insert after lake point ${i+1}`} disabled={draft.points.length>=24} onClick={()=>{const points=[...draft.points],next=points[(i+1)%points.length];points.splice(i+1,0,[(p[0]+next[0])/2,(p[1]+next[1])/2]);change({...draft,points});}}><Plus size={14}/></Button><Button variant="ghost" size="icon-sm" type="button" aria-label={`Remove lake point ${i+1}`} disabled={draft.points.length<=3} onClick={()=>change({...draft,points:draft.points.filter((_,j)=>i!==j)})}><Trash2 size={14}/></Button></>}><FieldGrid columns={2}>{p.map((value,axis)=><NumberField key={axis} label={`Lake point ${i+1} ${axis===0?'X':'Z'}`} value={value} min={-100} max={100} onChange={value=>{const points=draft.points.map(p=>[...p] as PathPoint);points[i][axis]=value;change({...draft,points});}}/>)}</FieldGrid></PointEditor>)}
       </InspectorSection>
-      <InspectorSection sectionId="lake-islands" title="Dry islands" defaultOpen={!!draft.holes}>
+      <InspectorSection sectionId="lake-islands" title="Dry islands" defaultOpen={false}>
         <FieldMessage>Islands retain authored terrain. Drag their inner shoreline handles or edit X/Z. Both banks need room for the water channel.</FieldMessage>
         {!draft.holes&&<Button variant="outline" type="button" onClick={()=>{const cx=draft.points.reduce((n,p)=>n+p[0],0)/draft.points.length,cz=draft.points.reduce((n,p)=>n+p[1],0)/draft.points.length;change({...draft,holes:[draft.points.map(p=>[cx+(p[0]-cx)*.6,cz+(p[1]-cz)*.6])]});}}>Add dry island</Button>}
         {(draft.holes??[]).map((hole,h)=><div key={h}><h4>Island {h+1}</h4><Button variant="ghost" type="button" onClick={()=>{const holes=draft.holes!.filter((_,i)=>i!==h);change({...draft,holes:holes.length?holes:undefined});}}>Remove island {h+1}</Button>{hole.map((p,i)=><PointEditor key={i} title={<>Island point {i+1}</>} actions={<><Button variant="ghost" type="button" disabled={hole.length>=24} aria-label={`Insert island point after ${i+1}`} onClick={()=>{const holes=structuredClone(draft.holes!),q=hole[(i+1)%hole.length];holes[h].splice(i+1,0,[(p[0]+q[0])/2,(p[1]+q[1])/2]);change({...draft,holes});}}><Plus size={14}/></Button><Button variant="ghost" type="button" disabled={hole.length<=3} aria-label={`Remove island point ${i+1}`} onClick={()=>{const holes=structuredClone(draft.holes!);holes[h].splice(i,1);change({...draft,holes});}}><Trash2 size={14}/></Button></>}><FieldGrid columns={2}>{p.map((value,axis)=><NumberField key={axis} label={`Island ${h+1} point ${i+1} ${axis===0?'X':'Z'}`} value={value} min={-100} max={100} onChange={value=>{const holes=structuredClone(draft.holes!);holes[h][i][axis]=value;change({...draft,holes});}}/>)}</FieldGrid></PointEditor>)}</div>)}
@@ -33,5 +35,5 @@ export function LakeInspector({lake,editor,cancel,playing,onReset,onStep,snappin
       <ActionBar pending={!!(state.gestureLabel)}><div><span className="status-dot"/>{error?'Resolve the invalid edit':state.gestureLabel?'Previewing lake changes':'All changes applied'}</div><Button variant="default" className="primary-button" type="submit" disabled={!state.gestureLabel||!!error}><Check size={15}/>Apply lake changes</Button><Button variant="ghost" type="button" className="cancel-button" disabled={!state.gestureLabel} onClick={cancel}><RotateCcw size={14}/>Cancel preview<span>Esc</span></Button></ActionBar>
       <ActionRow><Button variant="destructive" size="sm" type="button" className="delete-button" disabled={!!state.gestureLabel} onClick={()=>editor.execute({type:'remove',id:lake.id},'Delete lake')}><Trash2 size={14}/>Delete lake</Button></ActionRow>
     </form><InspectorSection sectionId="lakeinspector-notes-1" title="About this object" defaultOpen={false}><FieldMessage>Hiding or deleting this lake preserves your sculpted terrain. This version supports one lake and one separate river. Ocean has its own controls.</FieldMessage></InspectorSection>
-  </PanelBody>;
+  </PropertiesPanel>;
 }

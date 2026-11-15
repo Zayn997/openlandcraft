@@ -19,9 +19,12 @@ const faces = ["front", "back", "left", "right", "top", "bottom"] as const;
 
 export function ViewNavigator({
   bridge,
+  onReset,
 }: {
   bridge: RefObject<NavigationBridge>;
+  onReset?: () => void;
 }) {
+  const reset = () => onReset ? onReset() : bridge.current.snap?.("perspective");
   const cube = useRef<HTMLDivElement>(null);
   const ball = useRef<HTMLDivElement>(null);
   const buttons = useRef<Partial<Record<OrientationView, HTMLButtonElement>>>(
@@ -139,7 +142,7 @@ export function ViewNavigator({
         }
         if (event.key === "Home") {
           event.preventDefault();
-          bridge.current.snap?.("perspective");
+          reset();
         }
         if (event.key === "Escape") {
           bridge.current.stop?.();
@@ -150,9 +153,9 @@ export function ViewNavigator({
       <button
         className="navigator-home"
         type="button"
-        aria-label="Home view"
-        title="Home view"
-        onClick={() => bridge.current.snap?.("perspective")}
+        aria-label="Reset camera"
+        title="Reset camera · fit site"
+        onClick={reset}
       >
         <Home size={15} />
       </button>
@@ -161,7 +164,7 @@ export function ViewNavigator({
         className="navigator-ball"
         tabIndex={0}
         role="group"
-        aria-label="Drag to orbit; arrow keys rotate; Home resets orientation"
+        aria-label="Drag to orbit; arrow keys rotate; Home resets camera"
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={(event) => {

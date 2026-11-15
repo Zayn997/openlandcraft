@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useMemo,useState} from 'react';
 import {applyCommand,copySelection,DEFAULT_TOWER,groundHeight,newTower,pasteSelection,towerOwner,towerPart,towerParameters,towerParameterIssue,type Command,type Editor,type TowerParameters,type TowerType} from '@openlandcraft/core';
 import {InspectorSection} from './InspectorSection';
 import {Button,CheckboxInput,Field,FieldMessage,NumberField,Panel,PanelHeading,Row,SelectInput,SelectOption,TextInput} from './ui';
@@ -46,21 +46,27 @@ export function useTowerTool(editor:Editor,snapping:boolean,onSnapping:(v:boolea
 export function TowerSelection({editor,id,onSelect,onError}:{editor:Editor;id:string;onSelect:(id:string)=>void;onError:(error:string)=>void}){
  const project=editor.getSnapshot().project,tower=towerOwner(project,id),type=tower&&project.towerTypes?.find(t=>t.id===tower.typeId),params=tower?towerParameters(project,tower):DEFAULT_TOWER;
  const [mode,setMode]=useState<'instance'|'shared'>('instance'),[draft,setDraft]=useState(params),[typeName,setTypeName]=useState(type?.name??'');
- if(!tower||!type)return null;
- const part=towerPart(tower,id),level=project.entities.find(e=>e.id===tower.levelId)!,busy=!!editor.getSnapshot().gestureLabel,users=project.towerAssemblies!.filter(t=>t.typeId===type.id).length;
+ const busy=!!editor.getSnapshot().gestureLabel;
+ const changed=!!type&&((mode==='shared'&&typeName!==type.name)||(Object.keys(DEFAULT_TOWER) as (keyof TowerParameters)[]).some(k=>draft[k]!== (mode==='shared'?type[k]:params[k])));
+ const command=useMemo<Command|null>(()=>!tower||!type?null:mode==='shared'?{type:'towerType',definition:{...type,...draft,name:typeName}}:{type:'tower',tower:{...tower,parameters:Object.fromEntries((Object.keys(DEFAULT_TOWER) as (keyof TowerParameters)[]).filter(k=>draft[k]!==type[k]).map(k=>[k,draft[k]]))}},[tower,type,mode,draft,typeName]);
+ const issue=useMemo(()=>{
+  // Selection reads the committed model; only an edited draft needs regeneration and validation.
+  if(!changed||busy||!command)return '';
+  try{applyCommand(project,command);return '';}catch(e){return (e as Error).message;}
+ },[project,command,changed,busy]);
+ if(!tower||!type||!command)return null;
+ const part=towerPart(tower,id),level=project.entities.find(e=>e.id===tower.levelId)!,users=project.towerAssemblies!.filter(t=>t.typeId===type.id).length;
  const action=(fn:()=>void)=>{try{fn();}catch(e){onError((e as Error).message);}};
  const chooseMode=(m:typeof mode)=>{setMode(m);setDraft(m==='instance'?params:towerParameters({towerTypes:[type]},{...tower,parameters:undefined}));setTypeName(type.name);};
- const command:Command=mode==='shared'?{type:'towerType',definition:{...type,...draft,name:typeName}}:{type:'tower',tower:{...tower,parameters:Object.fromEntries((Object.keys(DEFAULT_TOWER) as (keyof TowerParameters)[]).filter(k=>draft[k]!==type[k]).map(k=>[k,draft[k]]))}};
- let issue='';try{applyCommand(project,command);}catch(e){issue=(e as Error).message;}
  const duplicate=()=>action(()=>{
   const clip=copySelection(project,tower.levelId),span=2*(params.radius+params.thickness/2+params.overhang)+2,prefix=crypto.randomUUID();let last:unknown;
   for(const worldDelta of [[span,0],[-span,0],[0,span],[0,-span]] as [number,number][])try{const plan=pasteSelection(project,clip,null,prefix,1,{worldDelta,snapping:true});editor.execute(plan.command,'Duplicate tower assembly');onSelect(plan.selectedIds[0]);return;}catch(e){last=e;}
   throw last;
  });
- return <InspectorSection sectionId="tower-selection" title="Tower assembly" className="mx-panel">
+ return <InspectorSection sectionId="tower-selection" title="Tower assembly" className="mx-panel" defaultOpen={false}>
   <FieldMessage>{level.name} · {params.radius.toFixed(2)} m radius · {params.height.toFixed(2)} m high · {params.floorCount} floors. {type.name} is shared by {users} {users===1?'tower':'towers'}.</FieldMessage>
   {part&&<><FieldMessage>Component edits stay local. Its unedited dimensions continue following the tower.</FieldMessage><Row className="flex-wrap"><Button variant="ghost" onClick={()=>onSelect(tower.levelId)}>Select tower</Button><Button variant="ghost" disabled={busy} onClick={()=>action(()=>editor.execute({type:'resetTowerPart',id},'Reset tower component dimensions'))}>Reset linked dimensions</Button>{part!=='wall'&&<Button variant="ghost" disabled={busy} onClick={()=>action(()=>editor.execute({type:'detachTowerPart',id},'Detach tower component'))}>Detach component</Button>}</Row></>}
-  <details><summary>Tower dimensions & type</summary><Row className="flex-wrap"><Button variant={mode==='instance'?'outline':'ghost'} disabled={busy} onClick={()=>chooseMode('instance')}>This tower</Button><Button variant={mode==='shared'?'outline':'ghost'} disabled={busy} onClick={()=>chooseMode('shared')}>Shared type · {users}</Button></Row><form onSubmit={e=>{e.preventDefault();if(!issue)action(()=>editor.execute(command,mode==='shared'?'Edit shared tower type':'Edit tower dimensions'));}}><fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">{mode==='shared'&&<Field>Type name<TextInput aria-label="Shared tower type name" required value={typeName} maxLength={80} onChange={e=>setTypeName(e.target.value)}/></Field>}<TowerFields value={draft} onChange={setDraft}/>{mode==='shared'&&<FieldMessage>Updates all {users} linked towers. Local tower parameters and component edits are preserved.</FieldMessage>}{issue&&<FieldMessage tone="error" role="alert">{issue}</FieldMessage>}<Button type="submit" disabled={!!issue}>{mode==='shared'?'Apply shared tower type':'Apply tower dimensions'}</Button></fieldset></form>
+  <details><summary>Tower dimensions & type</summary><Row className="flex-wrap"><Button variant={mode==='instance'?'outline':'ghost'} disabled={busy} onClick={()=>chooseMode('instance')}>This tower</Button><Button variant={mode==='shared'?'outline':'ghost'} disabled={busy} onClick={()=>chooseMode('shared')}>Shared type · {users}</Button></Row><form onSubmit={e=>{e.preventDefault();if(changed&&!busy&&!issue)action(()=>editor.execute(command,mode==='shared'?'Edit shared tower type':'Edit tower dimensions'));}}><fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">{mode==='shared'&&<Field>Type name<TextInput aria-label="Shared tower type name" required value={typeName} maxLength={80} onChange={e=>setTypeName(e.target.value)}/></Field>}<TowerFields value={draft} onChange={setDraft}/>{mode==='shared'&&<FieldMessage>Updates all {users} linked towers. Local tower parameters and component edits are preserved.</FieldMessage>}{issue&&<FieldMessage tone="error" role="alert">{issue}</FieldMessage>}<Button type="submit" disabled={busy||!changed||!!issue}>{mode==='shared'?'Apply shared tower type':'Apply tower dimensions'}</Button></fieldset></form>
    <Row className="flex-wrap"><Button variant="ghost" disabled={busy} onClick={()=>action(()=>editor.execute({type:'tower',tower:{...tower,parameters:undefined}},'Use shared tower dimensions'))}>Use shared dimensions</Button><Button variant="ghost" disabled={busy} onClick={()=>action(()=>{const definition={...type,...params,id:crypto.randomUUID(),name:(type.name.slice(0,68)+' unique')};editor.execute({type:'batch',commands:[{type:'towerType',definition},{type:'tower',tower:{...tower,typeId:definition.id,parameters:undefined}}]},'Make tower type unique');})}>Make type unique</Button></Row>
   </details>
   <Row className="flex-wrap"><Button variant="ghost" disabled={busy} onClick={duplicate}>Duplicate tower</Button><Button variant="ghost" disabled={busy} onClick={()=>action(()=>editor.execute({type:'detachTower',id:tower.id},'Make tower components independent'))}>Make all independent</Button></Row>
