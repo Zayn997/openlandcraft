@@ -43,7 +43,7 @@ describe('native clipped hedge runs',()=>{
  it('preserves preview/cancel, undo/redo, locks and strict format-38 portable/local persistence',async()=>{
   const p=scene(),editor=new Editor(p);editor.begin('Trim');editor.preview({type:'replace',entity:{...run(),height:2}});expect(editor.getSnapshot().preview!.entities[0]).toMatchObject({height:2});editor.cancel();expect(editor.getSnapshot().project).toEqual(p);
   editor.execute({type:'replace',entity:{...run(),height:2}},'Trim hedge');editor.undo();expect(editor.getSnapshot().project).toEqual(p);editor.redo();const saved=editor.getSnapshot().project;expect(deserializeProject(serializeProject(saved))).toEqual(saved);await saveLocal(saved);expect(await loadLocal()).toEqual(saved);
-  expect(()=>parseProject({...p,version:37})).toThrow('format 38');expect(parseProject({...base(),version:37})).toEqual({...base(),version:39});expect(()=>parseProject({...p,version:40})).toThrow();
+  expect(()=>parseProject({...p,version:37})).toThrow('format 38');expect(parseProject({...base(),version:37})).toEqual({...base(),version:40});expect(()=>parseProject({...p,version:41})).toThrow();
   let locked=applyCommand(p,{type:'layer',layer:{id:'hedges',name:'Hedges',parentId:null,color:'#446633',visible:true,locked:false}});locked=applyCommand(locked,{type:'assignLayer',ids:['hedge'],layerId:'hedges'});locked=applyCommand(locked,{type:'layer',layer:{...locked.layers.find(l=>l.id==='hedges')!,locked:true}});expect(()=>applyCommand(locked,{type:'replace',entity:{...run(),height:2}})).toThrow('Unlock');
  });
 });

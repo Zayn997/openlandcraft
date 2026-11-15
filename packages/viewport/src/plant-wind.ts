@@ -33,10 +33,15 @@ export function createPlantWind(source: THREE.Mesh) {
   const height = Math.max(0.01, source.geometry.boundingBox!.max.y);
   const strength = height < 1 ? 0.16 : height < 2 ? 0.08 : 0.04;
   const uniforms = { uPlantWindTime: { value: 0 }, uPlantWindEnabled: { value: 0 },
+    uPlantSeasonColor: { value: new THREE.Color('#869777') }, uPlantSeasonStrength: { value: 0 },
     uPlantWindHeight: { value: height }, uPlantWindStrength: { value: strength }, uPlantWindSpeed: { value: height < 1 ? 1.8 : 0.85 } };
   const patch = <T extends THREE.Material>(material: T): T => {
     material.onBeforeCompile = shader => {
       Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = 'uniform vec3 uPlantSeasonColor; uniform float uPlantSeasonStrength;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+        float foliage = smoothstep(max(diffuseColor.r,diffuseColor.b)*1.02,max(diffuseColor.r,diffuseColor.b)*1.35+0.01,diffuseColor.g);
+        diffuseColor.rgb = mix(diffuseColor.rgb,uPlantSeasonColor*(0.65+dot(diffuseColor.rgb,vec3(0.2126,0.7152,0.0722))),foliage*uPlantSeasonStrength);`);
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + plantWindGLSL)
         .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
           float windH = clamp(position.y / uPlantWindHeight, 0.0, 1.0);
@@ -46,7 +51,7 @@ export function createPlantWind(source: THREE.Mesh) {
           float windWeight = clamp(position.y / uPlantWindHeight, 0.0, 1.0);
           transformed.xz += plantWindDirection() * (windWeight * windWeight * uPlantWindHeight * uPlantWindStrength * plantWindWave());`);
     };
-    material.customProgramCacheKey = () => 'openlandcraft-plant-wind-v1';
+    material.customProgramCacheKey = () => 'openlandcraft-plant-wind-v2';
     return material;
   };
   const materials = (Array.isArray(source.material) ? source.material : [source.material]).map(m => patch(m.clone()));

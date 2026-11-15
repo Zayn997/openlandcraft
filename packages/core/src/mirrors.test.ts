@@ -77,6 +77,6 @@ describe('editable garden symmetry',()=>{
  it('previews, cancels, undoes, reopens and migrates without adding symmetry to old projects',async()=>{
   const p=scene(),editor=new Editor(p);editor.begin('Mirror preview');editor.preview({type:'mirror',rule:rule({start:[2,-20],end:[2,20]})});expect(copy(editor.getSnapshot().preview!).position[0]).toBe(12);editor.cancel();expect(editor.getSnapshot().project).toEqual(p);
   editor.execute({type:'mirror',rule:rule({name:'Formal garden'})},'Rename symmetry');editor.undo();expect(editor.getSnapshot().project).toEqual(p);editor.redo();const saved=editor.getSnapshot().project;expect(deserializeProject(serializeProject(saved))).toEqual(saved);await saveLocal(saved);expect(await loadLocal()).toEqual(saved);
-  const old={...base(),version:36};expect(parseProject(old)).toEqual({...old,version:39});expect(()=>parseProject({...p,version:36})).toThrow('format 37');expect(()=>parseProject({...p,version:40})).toThrow();
+  const old={...base(),version:36};expect(parseProject(old)).toEqual({...old,version:40});expect(()=>parseProject({...p,version:36})).toThrow('format 37');expect(()=>parseProject({...p,version:41})).toThrow();
  });
 });

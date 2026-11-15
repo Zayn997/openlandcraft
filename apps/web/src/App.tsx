@@ -17,6 +17,7 @@ import { createViewportMetricsSource, RendererInfo } from './viewport-metrics';
 import { ProjectName } from './ProjectName';
 import { ViewportToolbar, type CameraView } from './ViewportToolbar';
 import { ExperienceSetup, ExperienceToolbar } from './ExperienceControls';
+import { EnvironmentPanel } from './EnvironmentPanel';
 import type { WalkExperienceConfig, WalkExperienceStatus } from '@openlandcraft/viewport';
 import type { CameraProjection } from '@openlandcraft/viewport';
 import { ViewportStatusBar } from './ViewportStatusBar';
@@ -177,6 +178,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
   const [mirrorDraft,setMirrorDraft]=useState<MirrorRequest|null>(null),[mirrorGuide,setMirrorGuide]=useState<MirrorRule|null>(null);
   const [mirrorAxisInput,setMirrorAxisInput]=useState<MirrorAxisInput|null>(null),[mirrorReference,setMirrorReference]=useState<MirrorReferenceLine|null>(null);
   const [experienceOpen,setExperienceOpen]=useState(false),[experience,setExperience]=useState<WalkExperienceConfig|null>(null);
+  const [environmentOpen,setEnvironmentOpen]=useState(false);
   const [experienceStatus,setExperienceStatus]=useState<WalkExperienceStatus>({moving:false,x:0,z:0});
   const reportExperience=useCallback((next:WalkExperienceStatus)=>setExperienceStatus(current=>current.moving===next.moving&&current.x===next.x&&current.z===next.z&&current.motion===next.motion&&current.error===next.error?current:next),[]);
   const selectedMirrorSources=useMemo(()=>mirrorSelection(state.project,selectedParts.length?selectedParts:state.selectedId?[state.selectedId]:[],state.isolatedLayerId),[state.project,state.selectedId,selectedParts,state.isolatedLayerId]);
@@ -352,6 +354,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     [editor],
   );
   const cancelPreview = useCallback(() => {
+    setEnvironmentOpen(false);
     setExperience(null);setExperienceOpen(false);
     if (tool === 'path' && pathReturnId) editor.select(pathReturnId);
     setFrameCancelToken(value => value + 1);
@@ -373,6 +376,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     setInspectorEpoch((value) => value + 1);
   }, [editor,tool,pathReturnId]);
   useEditorEscape(useCallback(() => {
+    if(environmentOpen){if(editor.getSnapshot().gestureLabel==='Adjust sun position')editor.commit();setEnvironmentOpen(false);document.querySelector<HTMLButtonElement>('[aria-controls="environment-panel"]')?.focus();return;}
     if(experience||experienceOpen){setExperience(null);setExperienceOpen(false);return;}
     if(stairAttachment.draft){stairAttachment.cancel();return;}
     if(routeCornerIndex!==null||pathCornerIndex!==null||hedge.cornerIndex!==null){editor.cancel();setRouteCornerIndex(null);setPathCornerIndex(null);hedge.setCornerIndex(null);return;}
@@ -380,7 +384,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     setShowHelp(false);
     setProjectDialog(null);
     setNotice('');
-  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex,hedge.cornerIndex,stairAttachment.draft,experience,experienceOpen]), !opening && !importingModel);
+  }, [cancelPreview,editor,routeCornerIndex,pathCornerIndex,hedge.cornerIndex,stairAttachment.draft,experience,experienceOpen,environmentOpen]), !opening && !importingModel);
   const frame = useCallback(() => setFrameToken((value) => value + 1), []);
   const placingOpening=tool==='door'||tool==='window';
   const editingOpening=tool==='opening-edit';
@@ -440,6 +444,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
     return placed;
   };
   const chooseTool = (next: typeof tool) => {
+    setEnvironmentOpen(false);
     setExperience(null);setExperienceOpen(false);
     if(drawingArchitecture&&wallDraft.length)setNotice('Unfinished drawing discarded. No geometry was added.');
     setMirrorDraft(null);setMirrorGuide(null);setMirrorAxisInput(null);setMirrorReference(null);
@@ -823,7 +828,7 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
       if(target?.closest('.layers-panel')&&!shortcut)return;
       // Inspector disclosures and action buttons own their keyboard activation.
       if(target?.closest('#inspector button, #inspector summary')&&!shortcut)return;
-      if(mirrorDraft||experience||experienceOpen)return;
+      if(mirrorDraft||experience||experienceOpen||target?.closest('#environment-panel'))return;
       if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         if (event.repeat || !['select','wall-edit','outline-edit','opening-edit'].includes(tool)) return;
@@ -1161,8 +1166,9 @@ export function App({diagnostics}:{diagnostics?:AppDiagnostics}={}) {
             onView={next => { if(next === 'shore' || next.endsWith('underwater')) chooseTool('select'); if(next==='perspective'||next==='axonometric')setProjection(next==='axonometric'?'orthographic':'perspective');setView(next); }}
             transform={tool === 'select' && selected?.visible && ['instance','level','block'].includes(selected.kind) ? transformMode : undefined}
             canScale={selected?.kind === 'instance'} onTransform={mode => {editor.cancel();setTransformMode(mode);}}
-            snapping={snapping} onSnapping={setSnapping} onExplore={()=>{chooseTool('select');setExperienceOpen(true);}} exploreDisabled={!!state.gestureLabel||!!mirrorDraft||hydrating||opening} />}
+            snapping={snapping} onSnapping={setSnapping} onExplore={()=>{chooseTool('select');setExperienceOpen(true);}} exploreDisabled={!!state.gestureLabel||!!mirrorDraft||hydrating||opening} environmentOpen={environmentOpen} onEnvironment={()=>setEnvironmentOpen(value=>!value)} />}
           <div className={`viewport-area${!experience&&view.endsWith('underwater')?' underwater-view':''}`}>
+            {environmentOpen&&!experience&&<EnvironmentPanel editor={editor} value={project.environment} onClose={()=>{setEnvironmentOpen(false);document.querySelector<HTMLButtonElement>('[aria-controls="environment-panel"]')?.focus();}} onError={setError}/>}
             {experienceOpen&&<ExperienceSetup onClose={()=>setExperienceOpen(false)} onEnter={config=>{setExperienceStatus({moving:false,x:0,z:0});setExperience(config);setExperienceOpen(false);}}/>}
             {experience&&<div className="experience-hints" aria-label="Movement controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move / swim</span><span>Drag to look</span><span><kbd>Space</kbd> Jump</span><span><kbd>Shift</kbd> Faster</span><span><kbd>Esc</kbd> Exit</span></div>}
             {!hydrating && <Viewport

@@ -53,6 +53,8 @@ export type { MirrorAxisInput } from './mirror-axis-picker';
 import { WalkExperience, type WalkExperienceConfig, type WalkExperienceStatus } from './walk-experience';
 export type { WalkCharacter, WalkExperienceConfig, WalkExperienceStatus } from './walk-experience';
 import { captureExperienceCamera, restoreExperienceCamera, type ExperienceCameraSnapshot } from './experience-camera';
+import { SceneEnvironment } from './scene-environment';
+import { seasonalSite } from './environment-appearance';
 import type { MirrorRule } from "@openlandcraft/core";
 import { RepeatDrawing, type RepeatDrawingProps } from "./repeat-drawing";
 import { ConicalRoofDrawing } from "./conical-roof-drawing";
@@ -304,6 +306,7 @@ function Terrain({
   stairAttachment,
 }: Props) {
   const painting = tool === "plant" && !!plantBrush;
+  const materialSite = useMemo(() => seasonalSite(project.site,project.environment),[project.site,project.environment]);
   const paint = usePlantBrush({
     enabled: painting,
     asset: plantAsset,
@@ -666,7 +669,7 @@ function Terrain({
           }
         }}
       >
-        <CoastalTerrainMaterial site={project.site} />
+        <CoastalTerrainMaterial site={materialSite} />
       </mesh>
       {ring && (
         <lineLoop
@@ -1509,9 +1512,10 @@ export function Viewport(authored: Props) {
   };
   const transientCoast =
     props.tool === "terrain" && !!props.editor.getSnapshot().gestureLabel;
-  const coastSite = transientCoast
+  const baseCoastSite = transientCoast
     ? evaluateProject(props.editor.getSnapshot().project).site
     : project.site;
+  const coastSite = useMemo(() => seasonalSite(baseCoastSite,project.environment),[baseCoastSite,project.environment]);
   const [hovering, setHovering] = useState(false);
   const selected = props.project.entities.find(
     (entity) => entity.id === props.selectedId,
@@ -1665,30 +1669,10 @@ export function Viewport(authored: Props) {
           }}
         >
           <color attach="background" args={["#e5e6db"]} />
-          <ambientLight intensity={0.35} />
-          <hemisphereLight args={["#e6f0ed", "#a4a78c", 0.65]} />
-          <directionalLight
-            position={[
-              -project.site.width * 0.4,
-              project.site.width * 0.7,
-              project.site.width * 0.45,
-            ]}
-            intensity={2.6}
-            castShadow
-            shadow-mapSize={
-              props.quality === "high" ? [2048, 2048] : [1024, 1024]
-            }
-            shadow-camera-left={-project.site.width * 0.7}
-            shadow-camera-right={project.site.width * 0.7}
-            shadow-camera-top={project.site.depth * 0.75}
-            shadow-camera-bottom={-project.site.depth * 0.75}
-            shadow-camera-far={
-              Math.max(project.site.width, project.site.depth) * 3
-            }
-            shadow-bias={-0.0003}
-          />
+          <SceneEnvironment project={project} quality={props.quality} playing={props.playing}/>
           <Suspense fallback={null}>
             <WaterOptics
+              environment={project.environment}
               enabled={project.entities.some(
                 (entity) =>
                   (entity.kind === "ocean" ||

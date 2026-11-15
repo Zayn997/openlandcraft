@@ -39,9 +39,9 @@ describe('editable paved courtyards',()=>{
   it('migrates format 33 without changing towers, path identities, layers, resources or terrain',()=>{
     let p=scene();p=applyCommand(p,{type:'batch',commands:[{type:'towerType',definition:{...DEFAULT_TOWER,id:'round',name:'Keep'}},{type:'tower',...newTower('round',[-16,2,0],'keep')}]});
     p=applyCommand(p,{type:'add',entity:createDrawnPath(p,[[-20,12],[20,12]],{width:3,surface:'paving'})});
-    const old={...p,version:33},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...snapshot,version:39});expect(old).toEqual(snapshot);
+    const old={...p,version:33},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...snapshot,version:40});expect(old).toEqual(snapshot);
     const c=courtyard(p);expect(()=>parseProject({...old,entities:[...old.entities,c]})).toThrow(/format 34/);
-    expect(()=>parseProject({...p,version:40})).toThrow();expect(serializeProject({...p,entities:[...p.entities,c]})).not.toContain('samples');
+    expect(()=>parseProject({...p,version:41})).toThrow();expect(serializeProject({...p,entities:[...p.entities,c]})).not.toContain('samples');
   });
   it('triangulates concave, reversed and collinear boundaries without covering dry notches',()=>{
     const concave:PathPoint[]=[[-10,-10],[0,-10],[10,-10],[10,0],[0,0],[0,10],[-10,10]];

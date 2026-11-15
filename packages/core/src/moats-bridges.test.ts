@@ -25,8 +25,8 @@ describe('editable ring moat and bank-to-bank bridges',()=>{
     const {p,moat}=study(),editor=new Editor(p),snapshot=editor.getSnapshot();
     const bad:PathPoint[][][]=[[[[-5,-5],[5,5],[-5,5],[5,-5]]],[[[-40,-5],[-30,-5],[-30,5],[-40,5]]],[moat.holes![0],moat.holes![0]],[[[-37,-5],[-27,-5],[-27,5],[-37,5]]]];
     for(const holes of bad){expect(()=>editor.execute({type:'replace',entity:{...moat,holes}},'Bad moat')).toThrow();expect(editor.getSnapshot()).toBe(snapshot);}
-    expect(()=>parseProject({...p,version:35})).toThrow(/format 36/);expect(()=>parseProject({...p,version:40})).toThrow();
-    const old={...base(),version:35};expect(parseProject(old)).toEqual({...old,version:39});expect(old.version).toBe(35);
+    expect(()=>parseProject({...p,version:35})).toThrow(/format 36/);expect(()=>parseProject({...p,version:41})).toThrow();
+    const old={...base(),version:35};expect(parseProject(old)).toEqual({...old,version:40});expect(old.version).toBe(35);
   });
   it('retains island edits in cache, preview cancellation, undo/redo and local/portable reopening',async()=>{
     const {p,moat}=study(),editor=new Editor(p),before=evaluateProject(p).site.terrain;

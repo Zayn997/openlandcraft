@@ -16,6 +16,7 @@ import {bridgeIssue} from './bridges';
 import {dryIslandsIssue} from './lakes';
 import {hedgeIssue} from './hedges';
 import {mirrorRuleSchema,mirrorIssue} from './mirrors';
+import { environmentSchema } from './environment';
 
 const finite = z.number().finite();
 const position = z.tuple([finite.min(-500).max(500), finite.min(-50).max(100), finite.min(-500).max(500)]);
@@ -203,7 +204,8 @@ const versionThirtyFiveSchema=versionThirtyFourSchema.extend({version:z.literal(
 const versionThirtySixSchema=versionThirtyFiveSchema.extend({version:z.literal(36)});
 const versionThirtySevenSchema=versionThirtySixSchema.extend({version:z.literal(37),mirrorRules:z.array(mirrorRuleSchema).max(32).optional()});
 const versionThirtyEightSchema=versionThirtySevenSchema.extend({version:z.literal(38)});
-export const projectSchema = versionThirtyEightSchema.extend({version:z.literal(39)}).superRefine((project, ctx) => {
+const versionThirtyNineSchema = versionThirtyEightSchema.extend({version:z.literal(39)});
+export const projectSchema = versionThirtyNineSchema.extend({version:z.literal(40),environment:environmentSchema.optional()}).superRefine((project, ctx) => {
   if(project.entities.filter(e=>e.kind==='hedge').length>32)ctx.addIssue({code:'custom',path:['entities'],message:'Keep the garden within 32 hedge runs.'});
   const mirrorError=mirrorIssue(project);if(mirrorError)ctx.addIssue({code:'custom',path:['mirrorRules'],message:mirrorError});
   const towerError=towerIssue(project);if(towerError)ctx.addIssue({code:'custom',path:['towerAssemblies'],message:towerError});
@@ -389,6 +391,7 @@ export function parseProject(value: unknown): Project {
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===36){const legacy=versionThirtySixSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:37};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===37){const legacy=versionThirtySevenSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:38};}
   if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===38){const legacy=versionThirtyEightSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:39};}
+  if(candidate&&typeof candidate==='object'&&'version' in candidate&&candidate.version===39){const legacy=versionThirtyNineSchema.safeParse(candidate);if(legacy.success)candidate={...legacy.data,version:40};}
   const result = projectSchema.safeParse(candidate);
   if (!result.success) {
     const issue = result.error.issues[0];

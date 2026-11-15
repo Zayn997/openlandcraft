@@ -29,6 +29,6 @@ describe('individual hedge corner fillets',()=>{
   // Use the site center for a bounded mirrored copy of a wholly left-hand run.
   h.points=h.points.map(([x,z])=>[x-12,z]);r.start=[0,-20];r.end=[0,20];
   let p=applyCommand(scene(h),{type:'mirror',rule:r});p=applyCommand(p,{type:'replace',entity:{...h,cornerRounding:[0,.8,.6,0]}});expect(p.entities.find(e=>e.id===mirrorMemberId(r,h.id))).toMatchObject({cornerRounding:[0,.8,.6,0]});expect(deserializeProject(serializeProject(p))).toEqual(p);await saveLocal(p);expect(await loadLocal()).toEqual(p);expect(()=>parseProject({...p,version:38})).toThrow('format 39');
-  const old={...base(),version:38,entities:[run({rounding:.5})]},upgraded=parseProject(old);expect(upgraded.entities).toEqual(old.entities);expect(upgraded.version).toBe(39);expect(old.version).toBe(38);
+  const old={...base(),version:38,entities:[run({rounding:.5})]},upgraded=parseProject(old);expect(upgraded.entities).toEqual(old.entities);expect(upgraded.version).toBe(40);expect(old.version).toBe(38);
  });
 });

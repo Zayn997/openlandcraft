@@ -20,6 +20,7 @@ import { disposeModel, loadModel } from './models';
 import { instanceMatrix, staticMeshes } from './instancing';
 import {mirrorBatchInstances} from './mirror-instances';
 import {mirrorPreviewModel} from './mirror-preview';
+import { SEASON_COLORS } from './environment-appearance';
 const noRaycast = () => undefined;
 
 function ModelCopy({ source, interactive }: { source: THREE.Group; interactive: boolean }) {
@@ -32,6 +33,12 @@ function ModelCopy({ source, interactive }: { source: THREE.Group; interactive: 
 function StaticBatch({ source, instances, project, interactive, onSelect, growth, windEnabled, playing }: { windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; source: THREE.Mesh; instances: Instance[]; project: Project; interactive: boolean; onSelect: (id: string) => void }) {
   const wind = useMemo(() => source.userData.plantWind ? createPlantWind(source) : null, [source]);
   useEffect(() => () => wind?.dispose(), [wind]);
+  useLayoutEffect(() => {
+    if (!wind) return;
+    const season = SEASON_COLORS[project.environment?.season ?? 'summer'];
+    wind.uniforms.uPlantSeasonColor.value.set(project.environment?.weather === 'snow' ? '#e5e9e6' : season.color);
+    wind.uniforms.uPlantSeasonStrength.value = project.environment?.weather === 'snow' ? 0.9 : season.strength;
+  }, [wind,project.environment]);
   const reducedWind = useRef(false);
   useEffect(() => {
     if (!wind) return;

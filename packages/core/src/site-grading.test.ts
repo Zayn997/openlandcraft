@@ -72,7 +72,7 @@ describe('fixed elevations and editable terrain grading',()=>{
   });
   it('migrates format 34 without introducing grade fields and rejects elevated settings labeled as legacy',()=>{
     const p=scene(),walk=createDrawnPath(p,[[-12,0],[12,0]],{width:3,surface:'paving'}),c=createRegion(p,'courtyard');
-    const old={...p,version:34,entities:[walk,c]},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...snapshot,version:39});expect(old).toEqual(snapshot);
-    expect(()=>parseProject({...old,entities:[path()]})).toThrow(/format 35/);expect(()=>parseProject({...p,version:40})).toThrow();
+    const old={...p,version:34,entities:[walk,c]},snapshot=structuredClone(old);expect(parseProject(old)).toEqual({...snapshot,version:40});expect(old).toEqual(snapshot);
+    expect(()=>parseProject({...old,entities:[path()]})).toThrow(/format 35/);expect(()=>parseProject({...p,version:41})).toThrow();
   });
 });

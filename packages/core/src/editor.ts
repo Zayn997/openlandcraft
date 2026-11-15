@@ -17,8 +17,10 @@ import type { TerrainMaterials } from './materials';
 import { diffHeights, restoreHeights, terrainSchema, type Heightfield, type HeightPatch } from '@openlandcraft/landscape';
 import {gradingSignature} from './site-grading';
 import {mirrorOwner,mirrorSourceIds,mirrorMemberId,mirrorRuleSchema,regenerateMirrors,type MirrorRule} from './mirrors';
+import { environmentSchema, type SceneEnvironment } from './environment';
 
 export type Command =
+  | {type:'environment';environment:SceneEnvironment}
   | {type:'mirror';rule:MirrorRule}
   | {type:'removeMirror';id:string;deleteObjects?:boolean}
   | {type:'detachMirrorMember';id:string}
@@ -74,6 +76,7 @@ function freeze<T>(value: T): T {
 
 export function applyCommand(project: Project, command: Command): Project {
   if (command.type === 'batch') return command.commands.reduce(applyCommand, project);
+  if (command.type === 'environment') return freeze({ ...project, environment: environmentSchema.parse(command.environment) });
   if (command.type === 'terrain'&&!project.entities.some(e=>e.kind==='hedge'||e.kind==='path'&&e.elevationMode==='graded'||e.kind==='materialRegion'&&e.elevationMode==='graded'||e.kind==='slab'&&e.stairs?.connections?.bottom&&!e.stairs.connections.bottom.floorId)) {
     if (!canEditObject(project, 'terrain')) throw new Error('Unlock and show the terrain layer before editing.');
     const field = terrainSchema.parse(command.field);
@@ -311,7 +314,7 @@ export class Editor {
     const sameEntities = project.entities === before.entities || project.entities.length === before.entities.length && project.entities.every((entity, index) => entity === before.entities[index] || JSON.stringify(entity) === JSON.stringify(before.entities[index]));
     const sameAssets = project.assets === before.assets || project.assets.length === before.assets.length && project.assets.every((asset, index) => { const previous = before.assets[index]; return asset.id === previous.id && asset.name === previous.name && asset.attribution === previous.attribution && asset.data === previous.data; });
     const sameLayers = JSON.stringify([project.layers,project.objectLayers,project.activeLayerId])===JSON.stringify([before.layers,before.objectLayers,before.activeLayerId]);
-    const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
+    const sameMetadata = JSON.stringify(project.environment) === JSON.stringify(before.environment) && project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
     const sameMaterials=JSON.stringify([project.site.materials,project.architecturalMaterials])===JSON.stringify([before.site.materials,before.architecturalMaterials]);
     const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify([project.repeatPatterns,project.mirrorRules,project.towerTypes,project.towerAssemblies])===JSON.stringify([before.repeatPatterns,before.mirrorRules,before.towerTypes,before.towerAssemblies]);
