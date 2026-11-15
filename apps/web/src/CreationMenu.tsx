@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Box, BrickWall, Building2, Cuboid, Droplets, Focus, Layers, Leaf, Plus, Route, Trash2, Waves } from 'lucide-react';
+import { Box, BrickWall, Building2, Cuboid, FlipHorizontal2, Plus, Trash2 } from 'lucide-react';
 import type { Project, WallShape } from '@openlandcraft/core';
 import { BuildingFootprintIcon, FloorSlabIcon, PitchedRoofIcon, RepeatElementsIcon, StairsIcon, TowerIcon } from './ArchitectureIcons';
+import { ClippedHedgeIcon, OceanWaveIcon, PavedCourtyardIcon, PlantedRegionIcon, PondWaterIcon, WindingPathIcon } from './LandscapeIcons';
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
   Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -67,13 +68,13 @@ export function CreationMenu({
         <DropdownMenuItem onSelect={onDrawBuilding}><BuildingFootprintIcon />Draw footprint</DropdownMenuItem>
       </CreationCategory>
       <CreationCategory value="landscape" title="Landscape" expanded={expanded.includes('landscape')}>
-        <DropdownMenuItem onSelect={onRegions}><Leaf />Landscape regions</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy} onSelect={onMirror}><Focus />Mirror / symmetry</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy||project.entities.filter(e=>e.kind==='hedge').length>=32} onSelect={onHedge}><Leaf />Draw clipped hedge</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onWater}><Droplets />Water System</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy||pathsFull} onSelect={onDrawPath}><Route />Draw path</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy||regionsFull} onSelect={onDrawCourtyard}><Layers />Draw courtyard</DropdownMenuItem>
-        <DropdownMenuItem disabled={hasOcean} onSelect={onAddOcean}><Waves />Add ocean</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onRegions}><PlantedRegionIcon />Landscape regions</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onMirror}><FlipHorizontal2 />Mirror / symmetry</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||project.entities.filter(e=>e.kind==='hedge').length>=32} onSelect={onHedge}><ClippedHedgeIcon />Draw clipped hedge</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onWater}><PondWaterIcon />Water System</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||pathsFull} onSelect={onDrawPath}><WindingPathIcon />Draw path</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||regionsFull} onSelect={onDrawCourtyard}><PavedCourtyardIcon />Draw courtyard</DropdownMenuItem>
+        <DropdownMenuItem disabled={hasOcean} onSelect={onAddOcean}><OceanWaveIcon />Add ocean</DropdownMenuItem>
       </CreationCategory>
       <CreationCategory value="models" title="Models" expanded={expanded.includes('models')}>
         {project.assets.map(asset => {
