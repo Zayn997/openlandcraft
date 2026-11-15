@@ -13,6 +13,7 @@ export { Panel, PanelHeader, PanelBody, PanelForm, PanelHeading } from './Panel'
 export { PanelResizeHandle } from './PanelResizeHandle';
 export { ActionBar } from './ActionBar';
 export { Button, buttonVariants } from './Button';
+export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './Accordion';
 export { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from './Card';
 export {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup,

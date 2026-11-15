@@ -1,4 +1,4 @@
-Button.tsx, Card.tsx, DropdownMenu.tsx, and SelectInput.tsx are adapted from shadcn/ui:
+Accordion.tsx, Button.tsx, Card.tsx, DropdownMenu.tsx, and SelectInput.tsx are adapted from shadcn/ui:
 https://github.com/shadcn-ui/ui/tree/main/apps/v4/registry/new-york-v4/ui
 
 MIT License

@@ -1,10 +1,22 @@
+import { useState, type ReactNode } from 'react';
 import { Box, Droplets, Focus, Layers, Leaf, MousePointer2, Plus, Route, Trash2, Waves } from 'lucide-react';
 import type { Project, WallShape } from '@openlandcraft/core';
 import {
-  Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup,
-  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+  Accordion, AccordionItem, AccordionTrigger, AccordionContent,
+  Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from './ui';
+
+function CreationCategory({ value, title, expanded, children }: {
+  value: string; title: string; expanded: boolean; children: ReactNode;
+}) {
+  return <AccordionItem value={value} className="py-1 first:pt-0 last:pb-0">
+    <DropdownMenuItem asChild onSelect={event => event.preventDefault()}>
+      <AccordionTrigger className="text-caption tracking-wide text-muted">{title}</AccordionTrigger>
+    </DropdownMenuItem>
+    <AccordionContent className="pb-0" inert={!expanded} aria-hidden={!expanded}>{children}</AccordionContent>
+  </AccordionItem>;
+}
 
 type Asset = Project['assets'][number];
 type Props = {
@@ -32,6 +44,7 @@ export function CreationMenu({
   project, busy, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
   onRegions, onWater, onDrawPath, onDrawCourtyard, onRepeat, onMirror, onHedge, onTower, onAddOcean, onPlaceAsset, onRemoveAsset,
 }: Props) {
+  const [expanded, setExpanded] = useState(['architecture', 'landscape', 'models']);
   const pathsFull = project.entities.filter(entity => entity.kind === 'path').length>=16;
   const regionsFull = project.entities.filter(entity => entity.kind === 'materialRegion'||entity.kind==='plantingRegion').length>=8;
   const hasOcean = project.entities.some(entity => entity.kind === 'ocean');
@@ -40,8 +53,8 @@ export function CreationMenu({
       <Button variant="outline" className="flex-1" aria-label="Add to scene"><Plus size={15} />Add…</Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent side="top" align="start" className="w-[264px]" aria-label="Add to scene">
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>Architecture</DropdownMenuLabel>
+      <Accordion type="multiple" value={expanded} onValueChange={setExpanded}>
+      <CreationCategory value="architecture" title="Architecture" expanded={expanded.includes('architecture')}>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('wall')}><MousePointer2 />Wall</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><Layers />Floor</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><Focus />Roof</DropdownMenuItem>
@@ -51,10 +64,8 @@ export function CreationMenu({
         <DropdownMenuItem onSelect={onAddBlock}><Box />Add massing block</DropdownMenuItem>
         <DropdownMenuItem onSelect={onAddBuilding}><Layers />Add building</DropdownMenuItem>
         <DropdownMenuItem onSelect={onDrawBuilding}><Focus />Draw footprint</DropdownMenuItem>
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>Landscape</DropdownMenuLabel>
+      </CreationCategory>
+      <CreationCategory value="landscape" title="Landscape" expanded={expanded.includes('landscape')}>
         <DropdownMenuItem onSelect={onRegions}><Leaf />Landscape regions</DropdownMenuItem>
         <DropdownMenuItem disabled={busy} onSelect={onMirror}><Focus />Mirror / symmetry</DropdownMenuItem>
         <DropdownMenuItem disabled={busy||project.entities.filter(e=>e.kind==='hedge').length>=32} onSelect={onHedge}><Leaf />Draw clipped hedge</DropdownMenuItem>
@@ -62,10 +73,8 @@ export function CreationMenu({
         <DropdownMenuItem disabled={busy||pathsFull} onSelect={onDrawPath}><Route />Draw path</DropdownMenuItem>
         <DropdownMenuItem disabled={busy||regionsFull} onSelect={onDrawCourtyard}><Layers />Draw courtyard</DropdownMenuItem>
         <DropdownMenuItem disabled={hasOcean} onSelect={onAddOcean}><Waves />Add ocean</DropdownMenuItem>
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>Models</DropdownMenuLabel>
+      </CreationCategory>
+      <CreationCategory value="models" title="Models" expanded={expanded.includes('models')}>
         {project.assets.map(asset => {
           const used = project.entities.some(entity =>
             (entity.kind === 'instance' || entity.kind === 'plantingRegion') && entity.assetId === asset.id);
@@ -80,7 +89,8 @@ export function CreationMenu({
             </DropdownMenuSubContent>
           </DropdownMenuSub>;
         })}
-      </DropdownMenuGroup>
+      </CreationCategory>
+      </Accordion>
     </DropdownMenuContent>
   </DropdownMenu>;
 }
