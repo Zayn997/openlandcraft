@@ -9,6 +9,36 @@ const base=()=>applyCommand(createSite({name:'Mirrors',width:80,depth:80,resolut
 const scene=()=>applyCommand(base(),{type:'mirror',rule:rule()});
 const copy=(p:Project,r=rule(),id=source.id)=>p.entities.find(e=>e.id===mirrorMemberId(r,id)) as Block;
 describe('editable garden symmetry',()=>{
+ it('commits detaching an unchanged copy as an undoable rule edit and allows independent transforms',()=>{
+  const editor=new Editor(scene()),id=mirrorMemberId(rule(),source.id),before=copy(editor.getSnapshot().project);
+  editor.select(id);editor.execute({type:'detachMirrorMember',id},'Detach mirrored object');
+  const detached=editor.getSnapshot();
+  expect(mirrorOwner(detached.project,id)).toBeUndefined();
+  expect(detached.project.mirrorRules![0].excluded).toEqual([source.id]);
+  expect(copy(detached.project)).toEqual(before);expect(detached.selectedId).toBe(id);expect(detached.past).toHaveLength(1);
+  editor.undo();expect(mirrorOwner(editor.getSnapshot().project,id)?.sourceId).toBe(source.id);
+  editor.redo();expect(mirrorOwner(editor.getSnapshot().project,id)).toBeUndefined();
+  editor.execute({type:'replace',entity:{...before,position:[12,3,6]}},'Move independent copy');
+  expect(copy(editor.getSnapshot().project).position).toEqual([12,3,6]);
+  editor.execute({type:'replace',entity:{...source,position:[-10,2,4]}},'Move source');
+  expect(copy(editor.getSnapshot().project).position).toEqual([12,3,6]);
+ });
+ it('commits making all copies independent without changing their geometry',()=>{
+  const editor=new Editor(scene()),before=editor.getSnapshot().project.entities;
+  editor.execute({type:'removeMirror',id:rule().id},'Make copies independent');
+  expect(editor.getSnapshot().project.mirrorRules).toEqual([]);
+  expect(editor.getSnapshot().project.entities).toEqual(before);expect(editor.getSnapshot().past).toHaveLength(1);
+  editor.undo();expect(editor.getSnapshot().project.mirrorRules).toEqual([rule()]);
+  editor.redo();expect(editor.getSnapshot().project.mirrorRules).toEqual([]);
+ });
+ it('commits name-only symmetry changes and preserves them across undo and redo',()=>{
+  const editor=new Editor(scene());
+  editor.execute({type:'mirror',rule:rule({name:'Renamed symmetry'})},'Rename symmetry');
+  expect(editor.getSnapshot().project.mirrorRules![0].name).toBe('Renamed symmetry');
+  expect(editor.getSnapshot().past).toHaveLength(1);
+  editor.undo();expect(editor.getSnapshot().project.mirrorRules![0].name).toBe('Garden symmetry');
+  editor.redo();expect(editor.getSnapshot().project.mirrorRules![0].name).toBe('Renamed symmetry');
+ });
  it('reflects offset and diagonal axes, retains originals, and uses the Y-rotation convention',()=>{
   const p=scene();expect(p.entities.find(e=>e.id===source.id)).toEqual(source);expect(copy(p).position).toEqual([8,2,4]);expect(copy(p).rotation).toBeCloseTo(-25);
   expect(reflectPoint({start:[3,-20],end:[3,20]},[-8,4])).toEqual([14,4]);const diagonalPoint=reflectPoint({start:[0,0],end:[10,10]},[-8,4]);expect(diagonalPoint[0]).toBeCloseTo(4);expect(diagonalPoint[1]).toBeCloseTo(-8);

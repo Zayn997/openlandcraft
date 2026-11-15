@@ -1,14 +1,16 @@
 import type { CameraView, CameraProjection, TransformMode } from '@openlandcraft/viewport';
+import { Footprints } from 'lucide-react';
 import { Button, CheckboxInput, Field, Row, SelectInput, SelectOption } from './ui';
 
 export type { CameraView } from '@openlandcraft/viewport';
 
-export function ViewportToolbar({ view, projection, onProjection, canShore, canDive, onView, onResetCamera, transform, canScale, onTransform, snapping, onSnapping }: {
+export function ViewportToolbar({ view, projection, onProjection, canShore, canDive, onView, onResetCamera, transform, canScale, onTransform, snapping, onSnapping, onExplore, exploreDisabled }: {
   view: CameraView; canShore: boolean; canDive: boolean; onView: (view: CameraView) => void;
   projection:CameraProjection;onProjection:(projection:CameraProjection)=>void;
   onResetCamera:()=>void;
   transform?: TransformMode; canScale: boolean; onTransform: (mode: TransformMode) => void;
   snapping: boolean; onSnapping: (value: boolean) => void;
+  onExplore: () => void; exploreDisabled: boolean;
 }) {
   return <Row className="shrink-0 min-h-10 compact:min-h-11 gap-1 px-2 border-0 border-b border-solid border-[var(--ui-toolbar-line)] bg-[var(--ui-toolbar-surface)] text-[var(--ui-toolbar-ink)] overflow-x-auto" aria-label="Viewport controls">
     <Row gap="none" role="group" aria-label="View projection" className="shrink-0 mr-1 border border-solid border-[var(--ui-toolbar-line)] rounded-control">
@@ -28,6 +30,7 @@ export function ViewportToolbar({ view, projection, onProjection, canShore, canD
       {view === 'river-underwater' && <SelectOption value="river-underwater">River underwater</SelectOption>}
       {view === 'lake-underwater' && <SelectOption value="lake-underwater">Lake underwater</SelectOption>}
     </SelectInput>
+    <Button variant="toolbar" size="sm" disabled={exploreDisabled} onClick={onExplore} title={exploreDisabled?'Finish or cancel the current edit before exploring':'Explore as a character with WASD'}><Footprints size={14}/>Explore</Button>
     {transform && <Row gap="none" className="ml-auto shrink-0" role="group" aria-label="Transform tools">
       {(['translate', 'rotate', ...(canScale ? ['scale'] : [])] as TransformMode[]).map(mode =>
         <Button key={mode} variant="toolbar" size="sm" className="px-2 compact:min-h-10" aria-pressed={transform === mode} onClick={() => onTransform(mode)}>

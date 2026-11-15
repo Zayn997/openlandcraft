@@ -19,6 +19,7 @@ import { instancePosition, type Asset, type BuildingPart, type Editor, type Enti
 import { disposeModel, loadModel } from './models';
 import { instanceMatrix, staticMeshes } from './instancing';
 import {mirrorBatchInstances} from './mirror-instances';
+import {mirrorPreviewModel} from './mirror-preview';
 const noRaycast = () => undefined;
 
 function ModelCopy({ source, interactive }: { source: THREE.Group; interactive: boolean }) {
@@ -79,7 +80,7 @@ function StaticBatch({ source, instances, project, interactive, onSelect, growth
     batch.instanceMatrix.needsUpdate = true;
   }, -0.3);
   useEffect(() => () => batch.dispose(), [batch]);
-  return <primitive object={batch} material={wind?.material ?? source.material} customDepthMaterial={wind?.depth} customDistanceMaterial={wind?.distance} userData={{copyInstanceIds:instances.map(e=>e.id)}} dispose={null} castShadow receiveShadow raycast={interactive ? THREE.InstancedMesh.prototype.raycast : noRaycast} onClick={(event: import('@react-three/fiber').ThreeEvent<MouseEvent>) => {
+  return <primitive object={batch} material={wind?.material ?? source.material} customDepthMaterial={wind?.depth} customDistanceMaterial={wind?.distance} userData={{copyInstanceIds:instances.map(e=>e.id)}} dispose={null} castShadow={!source.userData.mirrorPreview} receiveShadow={!source.userData.mirrorPreview} raycast={interactive ? THREE.InstancedMesh.prototype.raycast : noRaycast} onClick={(event: import('@react-three/fiber').ThreeEvent<MouseEvent>) => {
     if (interactive && event.delta <= 4 && event.instanceId !== undefined && instances[event.instanceId]) { event.stopPropagation(); onSelect(instances[event.instanceId].id); }
   }} />;
 }
@@ -92,7 +93,7 @@ function ModelContent({ source, instances, project, selectedId, selectedIds=[], 
   if (meshes) return <>{meshes.map((mesh) => <StaticBatch key={mesh.uuid} windEnabled={windEnabled} playing={playing} growth={growth} source={mesh} instances={instances} project={project} interactive={interactive} onSelect={onSelect} />)}{selected.map(selected=><group key={selected.id} position={instancePosition(selected, project)} rotation={[0, selected.rotation * Math.PI / 180, 0]} scale={selected.scale}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh></group>)}</>;
   return <>{instances.map((entity) => <group key={entity.id} userData={{copyEntityId:entity.id}} position={instancePosition(entity, project)} rotation={[0, entity.rotation * Math.PI / 180, 0]} scale={entity.scale} onClick={(event) => { if (interactive && event.delta <= 4) { event.stopPropagation(); onSelect(entity.id); } }}><ModelCopy source={source} interactive={interactive} />{(selectedIds.includes(entity.id)||entity.id === selectedId) && <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]} raycast={noRaycast}><ringGeometry args={[0.8, 1, 48]} /><meshBasicMaterial color="#d7f29c" side={THREE.DoubleSide} depthTest={false} /></mesh>}</group>)}</>;
 }
-export function ModelInstances({ asset, instances, project, selectedId, selectedIds, onSelect, onError, interactive, growth, windEnabled, playing }: { windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; selectedIds?:string[];
+export function ModelInstances({ asset, instances, project, selectedId, selectedIds, onSelect, onError, interactive, growth, windEnabled, playing, preview=false }: { preview?:boolean; windEnabled?: boolean; playing?: boolean; growth?: ReadonlyMap<string, number>; selectedIds?:string[];
   asset: Asset; instances: Instance[]; project: Project; selectedId: string | null; onSelect: (id: string) => void; onError: (message: string) => void; interactive: boolean;
 }) {
   const [source, setSource] = useState<THREE.Group | null>(null);
@@ -102,10 +103,12 @@ export function ModelInstances({ asset, instances, project, selectedId, selected
     loadModel(asset).then((root) => { if (!alive) { disposeModel(root); return; } owned = root; setSource(root); }).catch((error: unknown) => { if (alive) onError(`${asset.name}: ${error instanceof Error ? error.message : 'Model could not load.'}`); });
     return () => { alive = false; if (owned) disposeModel(owned); };
   }, [asset.data]);
-  const normal=instances.filter(e=>!e.mirrored),mirrored=instances.filter(e=>e.mirrored);
-  return source ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}>
-    {!!normal.length&&<ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={normal} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/>}
-    {!!mirrored.length&&<group scale={[-1,1,1]}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={source} instances={mirrorBatchInstances(mirrored,project)} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/></group>}
+  const ghost=useMemo(()=>source&&preview?mirrorPreviewModel(source):null,[source,preview]);
+  useEffect(()=>()=>ghost?.dispose(),[ghost]);
+  const displayed=ghost?.object??source,normal=instances.filter(e=>!e.mirrored),mirrored=instances.filter(e=>e.mirrored);
+  return displayed ? <group onPointerDown={event=>{if(interactive)event.stopPropagation();}} onPointerMove={event=>{if(interactive)event.stopPropagation();}}>
+    {!!normal.length&&<ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={displayed} instances={normal} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/>}
+    {!!mirrored.length&&<group scale={[-1,1,1]}><ModelContent windEnabled={windEnabled} playing={playing} growth={growth} source={displayed} instances={mirrorBatchInstances(mirrored,project)} project={project} selectedId={selectedId} selectedIds={selectedIds} interactive={interactive} onSelect={onSelect}/></group>}
   </group> : null;
 }
 

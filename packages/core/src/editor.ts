@@ -314,7 +314,7 @@ export class Editor {
     const sameMetadata = project.name === before.name && project.site.width === before.site.width && project.site.depth === before.site.depth && project.site.shoreX === before.site.shoreX && project.site.slope === before.site.slope;
     const sameResolution = before.site.terrain.columns === project.site.terrain.columns && before.site.terrain.rows === project.site.terrain.rows;
     const sameMaterials=JSON.stringify([project.site.materials,project.architecturalMaterials])===JSON.stringify([before.site.materials,before.architecturalMaterials]);
-    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify([project.repeatPatterns,project.towerTypes,project.towerAssemblies])===JSON.stringify([before.repeatPatterns,before.towerTypes,before.towerAssemblies]);
+    const terrainOnly = sameLayers && sameMetadata && sameMaterials && sameEntities && sameAssets && sameResolution && JSON.stringify([project.repeatPatterns,project.mirrorRules,project.towerTypes,project.towerAssemblies])===JSON.stringify([before.repeatPatterns,before.mirrorRules,before.towerTypes,before.towerAssemblies]);
     const patch = terrainOnly ? diffHeights(before.site.terrain, project.site.terrain) : null;
     if (patch && !patch.indices.length) {
       this.publish({ preview: null, gestureLabel: null });

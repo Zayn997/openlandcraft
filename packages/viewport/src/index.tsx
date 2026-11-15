@@ -48,6 +48,11 @@ import { ArchitectureDrawing } from "./architecture-drawing";
 import { CurvedWallDrawing } from "./curved-wall-drawing";
 import { HedgeLayer, HedgeDraft } from "./hedge";
 import { MirrorAxis } from "./mirror-axis";
+import { MirrorAxisPicker, type MirrorAxisInput } from './mirror-axis-picker';
+export type { MirrorAxisInput } from './mirror-axis-picker';
+import { WalkExperience, type WalkExperienceConfig, type WalkExperienceStatus } from './walk-experience';
+export type { WalkCharacter, WalkExperienceConfig, WalkExperienceStatus } from './walk-experience';
+import { captureExperienceCamera, restoreExperienceCamera, type ExperienceCameraSnapshot } from './experience-camera';
 import type { MirrorRule } from "@openlandcraft/core";
 import { RepeatDrawing, type RepeatDrawingProps } from "./repeat-drawing";
 import { ConicalRoofDrawing } from "./conical-roof-drawing";
@@ -143,9 +148,14 @@ export type ViewportMetrics = {
   buffer?: { width: number; height: number; dpr: number };
 };
 type Props = {
+  experience?: WalkExperienceConfig;
+  onExperienceStatus?: (status: WalkExperienceStatus) => void;
   hedgeDrawing?: import("@openlandcraft/core").Hedge;
   towerDrawing?: TowerDrawingProps;
   mirrorAxis?: Pick<MirrorRule, "start" | "end">;
+  mirrorAxisInput?: MirrorAxisInput;
+  mirrorReference?: import('@openlandcraft/core').MirrorReferenceLine;
+  mirrorPreviewIds?: string[];
   repeatDrawing?: RepeatDrawingProps;
   plantAsset?: import("@openlandcraft/core").Asset | null;
   plantGrowth?: ReadonlyMap<string, number>;
@@ -188,6 +198,8 @@ type Props = {
   editor: Editor;
   tool:
     | "select"
+    | "mirror"
+    | "walk"
     | "hedge"
     | "tower"
     | "repeat"
@@ -688,8 +700,10 @@ function Massing({
   selected,
   onSelect,
   blockOpeningEdit = false,
+  preview = false,
 }: {
   blockOpeningEdit?: boolean;
+  preview?: boolean;
   entity: Block;
   selected: boolean;
   onSelect: (id: string) => void;
@@ -702,8 +716,9 @@ function Massing({
     >
       <mesh
         position={[0, entity.size[1] / 2, 0]}
-        castShadow
-        receiveShadow
+        castShadow={!preview}
+        receiveShadow={!preview}
+        raycast={preview?()=>undefined:THREE.Mesh.prototype.raycast}
         onPointerDown={(event) => {
           if (blockOpeningEdit) event.stopPropagation();
         }}
@@ -717,10 +732,10 @@ function Massing({
         }}
       >
         <boxGeometry args={entity.size} />
-        <meshStandardMaterial color={entity.color} roughness={0.75} />
+        <meshStandardMaterial color={preview?'#76d6e5':entity.color} roughness={0.75} transparent={preview} opacity={preview?0.38:1} depthWrite={!preview} />
         <Edges
           threshold={20}
-          color={selected ? "#d7f29c" : "#7b8176"}
+          color={preview ? '#76d6e5' : selected ? "#d7f29c" : "#7b8176"}
           lineWidth={selected ? 2 : 0.7}
           userData={{ waterCaptureExclude: true }}
         />
@@ -758,6 +773,7 @@ function CameraRig({
   openingSelection,
   navigation,
   plantBrush,
+  experience,
 }: Props & { navigation: React.RefObject<NavigationBridge> }) {
   const { camera, controls, size, gl, scene, set } = useThree();
   const sceneRadius = useMemo(() => orthographicSceneRadius(project), [project]);
@@ -786,12 +802,31 @@ function CameraRig({
     target: THREE.Vector3;
     reframe: boolean;
   } | null>(null);
+  const experienceCamera = useRef<ExperienceCameraSnapshot | null>(null), restoreCamera = useRef<ExperienceCameraSnapshot | null>(null);
+  const exploring = !!experience;
   const stopFlight = () => {
     const active = flight.current;
     flight.current = null;
     if (active) active.orbit.enableDamping = active.damping;
   };
   useLayoutEffect(() => {
+    const orbit = controls as unknown as Orbit | null;
+    if (exploring && !experienceCamera.current && orbit?.object === camera) {
+      stopFlight(); experienceCamera.current = captureExperienceCamera(camera, orbit.target);
+    }
+    if (!exploring && experienceCamera.current) {
+      restoreCamera.current = experienceCamera.current; experienceCamera.current = null; projectionSwap.current = null;
+      if (camera !== restoreCamera.current.camera) set({ camera: restoreCamera.current.camera });
+    }
+    const saved = restoreCamera.current;
+    if (saved && camera === saved.camera && orbit?.object === camera) {
+      stopFlight(); const damping = orbit.enableDamping; orbit.enableDamping = false; orbit.update();
+      restoreExperienceCamera(saved, orbit.target); orbit.update(); orbit.enableDamping = damping;
+      navigationView.current = { view, frameToken }; previousView.current = view; initialized.current = true; restoreCamera.current = null;
+    }
+  }, [exploring, camera, controls, set, view, frameToken]);
+  useLayoutEffect(() => {
+    if (restoreCamera.current || exploring && !experienceCamera.current) return;
     const orbit = controls as unknown as Orbit | null;
     if (
       !orbit ||
@@ -823,7 +858,7 @@ function CameraRig({
       reframe: !preserveProjectionFraming(previousView.current, view),
     };
     set({ camera: next });
-  }, [projection, camera, controls, set]);
+  }, [projection, camera, controls, set, exploring]);
   useLayoutEffect(() => {
     if (camera instanceof THREE.OrthographicCamera) {
       const zoom = camera.zoom;
@@ -929,6 +964,7 @@ function CameraRig({
     };
   }, [gl]);
   useFrame((_, delta) => {
+    if (exploring) return;
     const active = flight.current;
     if (!active) return;
     active.elapsed += delta;
@@ -940,6 +976,7 @@ function CameraRig({
     if (active.elapsed >= active.duration) stopFlight();
   }, -0.5);
   useFrame(() => {
+    if (exploring) return;
     if (view !== "shore" && !view.endsWith("underwater")) return;
     const ocean = project.entities.find(
       (entity) => entity.kind === "ocean" && entity.visible,
@@ -962,10 +999,12 @@ function CameraRig({
   }, -0.4);
   // Run after orbit controls and camera flights, before rendering/picking the scene.
   useFrame(() => {
+    if (exploring) return;
     const orbit = controls as unknown as Orbit | null;
     if (orbit?.object === camera) keepOrthographicSceneInFront(camera, orbit.target, sceneRadius);
   }, -0.3);
   useEffect(() => {
+    if (exploring || restoreCamera.current) return;
     const orbit = controls as unknown as Orbit | null;
     if (!orbit || orbit.object !== camera) return;
     const resetRequested = previousReset.current !== cameraResetToken;
@@ -1324,8 +1363,10 @@ function CameraRig({
     cameraResetToken,
     project.site.width,
     project.site.depth,
+    exploring,
   ]);
   const drawing =
+      tool === "mirror" ||
       tool === "wall" ||
       tool === "floor" ||
       tool === "roof" ||
@@ -1335,7 +1376,7 @@ function CameraRig({
   return (
     <OrbitControls
       enabled={
-        routeDrawing ||
+        !exploring && (routeDrawing ||
         drawing ||
         tool === "plant" ||
         tool === "select" ||
@@ -1343,7 +1384,7 @@ function CameraRig({
         tool === "window" ||
         tool === "opening-edit" ||
         tool === "wall-edit" ||
-        tool === "outline-edit"
+        tool === "outline-edit")
       }
       makeDefault
       enableDamping
@@ -1456,6 +1497,7 @@ export function Viewport(authored: Props) {
     ...authored,
     project,
     onSelect: (id: string | null, additive = false) => {
+      if(authored.tool==='mirror'||authored.tool==='walk')return;
       if (!id || editable(id)) authored.onSelect(id, additive);
     },
     onWallPick: (id: string, doubleClick: boolean) => {
@@ -1575,6 +1617,7 @@ export function Viewport(authored: Props) {
   const committedIds = new Set(
     props.editor.getSnapshot().project.entities.map((entity) => entity.id),
   );
+  const mirrorPreviewIds = new Set(props.mirrorPreviewIds ?? []);
   const copyPreviewIds = new Set(
     props.editor.getSnapshot().gestureLabel === "Alt-drag copy"
       ? project.entities
@@ -1601,7 +1644,7 @@ export function Viewport(authored: Props) {
         className="canvas-shell"
         style={{
           cursor:
-            props.tool !== "select"
+            props.experience ? 'grab' : props.tool !== "select"
               ? "crosshair"
               : hovering
                 ? "pointer"
@@ -1858,6 +1901,7 @@ export function Viewport(authored: Props) {
                             }
                             key={e.id}
                             hedge={e}
+                            draft={mirrorPreviewIds.has(e.id)}
                             project={project}
                             editor={props.editor}
                             selected={e.id === props.selectedId}
@@ -1945,6 +1989,7 @@ export function Viewport(authored: Props) {
                               !props.editor.getSnapshot().gestureLabel
                             }
                             entity={entity}
+                            preview={mirrorPreviewIds.has(entity.id)}
                             selected={
                               selectedParts.includes(entity.id) ||
                               entity.id === props.selectedId
@@ -1955,8 +2000,9 @@ export function Viewport(authored: Props) {
                           />
                         ))}
                       {props.mirrorAxis && (
-                        <MirrorAxis axis={props.mirrorAxis} project={project} />
+                        <MirrorAxis axis={props.mirrorAxis} reference={props.mirrorReference} project={project} />
                       )}
+                      {props.mirrorAxisInput && <MirrorAxisPicker project={props.editor.getSnapshot().project} isolatedId={props.isolatedLayerId} input={props.mirrorAxisInput} snapping={props.snapping} />}
                       {props.repeatDrawing && (
                         <RepeatDrawing
                           project={props.project}
@@ -2140,7 +2186,7 @@ export function Viewport(authored: Props) {
                                   (entity): entity is Instance =>
                                     entity.kind === "instance" &&
                                     entity.assetId === asset.id &&
-                                    entity.visible,
+                                    entity.visible && !mirrorPreviewIds.has(entity.id),
                                 )}
                                 selectedId={props.selectedId}
                                 selectedIds={selectedParts}
@@ -2156,6 +2202,10 @@ export function Viewport(authored: Props) {
                                 }
                               />
                             ))}
+                          {!!mirrorPreviewIds.size && props.project.assets.map(asset => {
+                            const instances=props.project.entities.filter((entity):entity is Instance=>entity.kind==='instance'&&entity.assetId===asset.id&&entity.visible&&mirrorPreviewIds.has(entity.id));
+                            return instances.length?<ModelInstances key={`mirror-preview-${asset.id}`} preview asset={asset} instances={instances} project={props.project} selectedId={null} onSelect={()=>{}} onError={props.onError} interactive={false} windEnabled={false} playing={false}/>:null;
+                          })}
                         </FishSchoolProvider>
                       </GroundCharacterProvider>
                     </group>
@@ -2287,6 +2337,7 @@ export function Viewport(authored: Props) {
                       />
                     )}
                     <CameraRig {...props} navigation={navigation} />
+                    {props.experience && props.onExperienceStatus && <WalkExperience project={project} config={props.experience} onStatus={props.onExperienceStatus} />}
                     <DragCopy
                       editor={props.editor}
                       enabled={
@@ -2334,7 +2385,7 @@ export function Viewport(authored: Props) {
             </WaterOptics>
           </Suspense>
         </Canvas>
-        <ViewNavigator bridge={navigation} onReset={props.onResetCamera} />
+        {!props.experience && <ViewNavigator bridge={navigation} onReset={props.onResetCamera} />}
       </div>
     </CanvasBoundary>
   );

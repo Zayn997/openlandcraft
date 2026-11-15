@@ -24,6 +24,7 @@ type Asset = Project['assets'][number];
 type Props = {
   project: Project;
   busy: boolean;
+  canMirror: boolean;
   onAddBlock: () => void;
   onAddBuilding: () => void;
   onDrawBuilding: () => void;
@@ -43,7 +44,7 @@ type Props = {
 
 /** Editor commands remain in App; this component only presents the creation menu. */
 export function CreationMenu({
-  project, busy, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
+  project, busy, canMirror, onAddBlock, onAddBuilding, onDrawBuilding, onDrawArchitecture,
   onRegions, onWater, onDrawPath, onDrawCourtyard, onRepeat, onMirror, onHedge, onTower, onAddOcean, onPlaceAsset, onRemoveAsset,
 }: Props) {
   const [expanded, setExpanded] = useState(['architecture', 'landscape', 'models']);
@@ -69,7 +70,7 @@ export function CreationMenu({
       </CreationCategory>
       <CreationCategory value="landscape" title="Landscape" expanded={expanded.includes('landscape')}>
         <DropdownMenuItem onSelect={onRegions}><PlantedRegionIcon />Landscape regions</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy} onSelect={onMirror}><FlipHorizontal2 />Mirror / symmetry</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy||!canMirror} title={canMirror?'Mirror the selected elements':'Select a static model, massing block, clipped hedge or repeat first'} onSelect={onMirror}><FlipHorizontal2 />Mirror / symmetry</DropdownMenuItem>
         <DropdownMenuItem disabled={busy||project.entities.filter(e=>e.kind==='hedge').length>=32} onSelect={onHedge}><ClippedHedgeIcon />Draw clipped hedge</DropdownMenuItem>
         <DropdownMenuItem onSelect={onWater}><PondWaterIcon />Water System</DropdownMenuItem>
         <DropdownMenuItem disabled={busy||pathsFull} onSelect={onDrawPath}><WindingPathIcon />Draw path</DropdownMenuItem>

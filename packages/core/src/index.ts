@@ -52,6 +52,7 @@ export * from './architectural-materials';
 export * from './opening-joinery';
 export * from './repeats';
 export * from './mirrors';
+export * from './mirror-axis';
 export * from './hedges';
 export * from './towers';
 export * from './circular-floors';
