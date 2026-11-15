@@ -56,8 +56,9 @@ function staticExtent(asset: Asset) {
   const extent = { radius, height }; geometry.set(asset,extent); return extent;
 }
 
-/** Compile only when the evaluated/displayed scene changes, never in the frame loop. */
-export function groundHabitat(project: Project) {
+/** Compile only when the evaluated/displayed scene changes, never in the frame loop.
+ * Controllers with their own vertical physics can disable terrain/water checks while retaining obstacles. */
+export function groundHabitat(project: Project, checks: { terrain?: boolean; water?: boolean } = {}) {
   const polygons: {points: PlanPoint[]; margin: number}[] = [];
   const circles: {x: number; z: number; radius: number}[] = [];
   const assets = new Map(project.assets.map(a => [a.id,a]));
@@ -118,13 +119,13 @@ export function groundHabitat(project: Project) {
     // Every touched terrain cell bounds height and slope between the ring samples.
     const {columns,rows,heights} = site.terrain, dx = site.width/(columns-1), dz = site.depth/(rows-1);
     let low = groundHeight(x,z,site);
-    for (let row = Math.max(0,Math.floor((z-radius+site.depth/2)/dz)); row <= Math.min(rows-1,Math.ceil((z+radius+site.depth/2)/dz)); row++)
+    if(checks.terrain!==false)for (let row = Math.max(0,Math.floor((z-radius+site.depth/2)/dz)); row <= Math.min(rows-1,Math.ceil((z+radius+site.depth/2)/dz)); row++)
       for (let col = Math.max(0,Math.floor((x-radius+site.width/2)/dx)); col <= Math.min(columns-1,Math.ceil((x+radius+site.width/2)/dx)); col++) {
         const h = heights[row*columns+col]; low = Math.min(low,h);
         if (col < columns-1 && Math.abs(heights[row*columns+col+1]-h)/dx > 0.45) return false;
         if (row < rows-1 && Math.abs(heights[(row+1)*columns+col]-h)/dz > 0.45) return false;
       }
-    for (const water of waters) {
+    for (const water of checks.water===false?[]:waters) {
       if (water.kind === 'ocean' && low < water.level+2*water.amplitude+0.12) return false;
       if (water.kind === 'lake' && lakeWaterDistance(water,x,z) > -radius && low < water.level+2*water.amplitude+0.12) return false;
       if (water.kind === 'river') {

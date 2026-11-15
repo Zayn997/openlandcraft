@@ -34,7 +34,7 @@ function ComponentMesh({wall,opening,component,project}:{wall:Wall;opening:Openi
  const config=opening.joinery![component]!,geometry=useMemo(()=>buildOpeningComponentGeometry(wall,opening,component),[wall,opening,component]);useEffect(()=>()=>geometry.dispose(),[geometry]);
  const materialId='materialId' in config?config.materialId:undefined,shared=materialId?architecturalMaterials(project).find(m=>m.id===materialId):undefined;
  const timber={...ARCHITECTURAL_MATERIAL_DEFAULTS[1],color:config.color};
- return <mesh geometry={geometry} raycast={noRaycast} castShadow={component!=='glass'} receiveShadow userData={{copyEntityId:wall.id,copyOpeningId:opening.id}}>
+ return <mesh geometry={geometry} raycast={noRaycast} castShadow={component!=='glass'} receiveShadow userData={{copyEntityId:wall.id,copyOpeningId:opening.id,experiencePassThrough:component!=='frame'}}>
   {component==='glass'?<meshStandardMaterial color={config.color} roughness={.12} metalness={.05} transparent opacity={opening.joinery!.glass!.opacity} depthWrite={false}/>:<ArchitecturalSurface definition={shared??timber} color={config.color}/>}
  </mesh>;
 }
