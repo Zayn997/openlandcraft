@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { Box, Droplets, Focus, Layers, Leaf, MousePointer2, Plus, Route, Trash2, Waves } from 'lucide-react';
+import { Box, BrickWall, Building2, Cuboid, Droplets, Focus, Layers, Leaf, Plus, Route, Trash2, Waves } from 'lucide-react';
 import type { Project, WallShape } from '@openlandcraft/core';
+import { BuildingFootprintIcon, FloorSlabIcon, PitchedRoofIcon, RepeatElementsIcon, StairsIcon, TowerIcon } from './ArchitectureIcons';
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
   Button, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -55,15 +56,15 @@ export function CreationMenu({
     <DropdownMenuContent side="top" align="start" className="w-[264px]" aria-label="Add to scene">
       <Accordion type="multiple" value={expanded} onValueChange={setExpanded}>
       <CreationCategory value="architecture" title="Architecture" expanded={expanded.includes('architecture')}>
-        <DropdownMenuItem onSelect={() => onDrawArchitecture('wall')}><MousePointer2 />Wall</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><Layers />Floor</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><Focus />Roof</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDrawArchitecture('stairs')}><Layers />Stairs</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy} onSelect={onTower}><Box />Tower assembly</DropdownMenuItem>
-        <DropdownMenuItem disabled={busy} onSelect={onRepeat}><Route />Repeat along line / arc</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onAddBlock}><Box />Add massing block</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onAddBuilding}><Layers />Add building</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onDrawBuilding}><Focus />Draw footprint</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('wall')}><BrickWall />Wall</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('floor')}><FloorSlabIcon />Floor</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('roof')}><PitchedRoofIcon />Roof</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDrawArchitecture('stairs')}><StairsIcon />Stairs</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onTower}><TowerIcon />Tower assembly</DropdownMenuItem>
+        <DropdownMenuItem disabled={busy} onSelect={onRepeat}><RepeatElementsIcon />Repeat along line / arc</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onAddBlock}><Cuboid />Add massing block</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onAddBuilding}><Building2 />Add building</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onDrawBuilding}><BuildingFootprintIcon />Draw footprint</DropdownMenuItem>
       </CreationCategory>
       <CreationCategory value="landscape" title="Landscape" expanded={expanded.includes('landscape')}>
         <DropdownMenuItem onSelect={onRegions}><Leaf />Landscape regions</DropdownMenuItem>
